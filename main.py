@@ -1,4 +1,4 @@
-import os, io, requests, gspread, pandas as pd
+import os, io, requests, gspread, json, pandas as pd
 from flask import Flask, render_template
 from datetime import datetime
 from google.oauth2 import service_account
@@ -8,15 +8,27 @@ app = Flask(__name__)
 # --- CONFIG ---
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
-CREDS_FILE = 'creds.json'
 
-# --- AUTH ---
+# --- RAILWAY & LOCAL AUTH FIX ---
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+
+# 1. Check if Railway has the secret in its memory
+env_creds = os.getenv("GOOGLE_CREDS_JSON")
+
 try:
-    creds = service_account.Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
+    if env_creds:
+        # This runs on Railway
+        creds_dict = json.loads(env_creds)
+        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
+        print("AUTH: Using Railway Environment Variable")
+    else:
+        # This runs on your PC
+        creds = service_account.Credentials.from_service_account_file('creds.json', scopes=SCOPE)
+        print("AUTH: Using local creds.json file")
+
     G_CLIENT = gspread.authorize(creds)
 except Exception as e:
-    print(f"AUTH ERROR: {e}")
+    print(f"CRITICAL AUTH ERROR: {e}")
     G_CLIENT = None
 
 
@@ -70,7 +82,7 @@ def index():
             'time': row.get('Game Time', 'TBD')
         })
 
-    # 2. ESPN LIVE SCORES (With Logo Support & WIN/LOSS status)
+    # 2. ESPN LIVE SCORES
     live_scores = []
     try:
         espn = requests.get(
@@ -79,7 +91,6 @@ def index():
         for event in espn.get('events', []):
             comp = event['competitions'][0]
             teams = comp['competitors']
-
             away_e = next(t for t in teams if t['homeAway'] == 'away')
             home_e = next(t for t in teams if t['homeAway'] == 'home')
             e_names = [away_e['team']['displayName'].upper(), home_e['team']['displayName'].upper()]
@@ -95,21 +106,16 @@ def index():
                             winner['team']['displayName']) else "LOSS"
 
                     live_scores.append({
-                        "id": str(event['id']),
-                        "status": status,
-                        "is_final": "Final" in status,
-                        "score": f"{away_e['score']} - {home_e['score']}",
-                        "our_result": res_label,
-                        "away_name": away_e['team']['displayName'],
-                        "away_logo": away_e['team']['logo'],
-                        "home_name": home_e['team']['displayName'],
-                        "home_logo": home_e['team']['logo'],
+                        "id": str(event['id']), "status": status, "is_final": "Final" in status,
+                        "score": f"{away_e['score']} - {home_e['score']}", "our_result": res_label,
+                        "away_name": away_e['team']['displayName'], "away_logo": away_e['team']['logo'],
+                        "home_name": home_e['team']['displayName'], "home_logo": home_e['team']['logo'],
                         "my_pick": p['pick']
                     })
     except:
         pass
 
-    # 3. ARCHIVE LOGIC (RE-WRITTEN FOR CORRECT STATS)
+    # 3. ARCHIVE LOGIC (THE STATS FIX)
     wins, losses, pct = 0, 0, 0
     if G_CLIENT:
         try:
@@ -119,11 +125,10 @@ def index():
             except:
                 archive_sheet = workbook.get_worksheet(0)
 
-            # Sync new results to sheet
+            # Sync new results
             existing_ids = [str(i).strip() for i in archive_sheet.col_values(16)]
             for s in [x for x in live_scores if x['is_final']]:
                 if str(s['id']) not in existing_ids:
-                    # Find matching parent pick data
                     match = next((g for g in all_games if
                                   normalize(g['away']) == normalize(s['away_name']) or normalize(
                                       g['home']) == normalize(s['home_name'])), None)
@@ -135,12 +140,11 @@ def index():
                             match['h_ppg'], match['h_ppga'], match['a_rank'], match['h_rank'], str(s['id'])
                         ])
 
-            # Recalculate Stats from Column C (Result)
+            # Tally Stats
             all_rows = archive_sheet.get_all_values()
             if len(all_rows) > 1:
                 headers = [h.strip().upper() for h in all_rows[0]]
                 res_idx = headers.index("RESULT") if "RESULT" in headers else 2
-
                 for row in all_rows[1:]:
                     if len(row) > res_idx:
                         val = str(row[res_idx]).strip().upper()
@@ -148,7 +152,6 @@ def index():
                             wins += 1
                         elif "LOSS" in val:
                             losses += 1
-
                 total = wins + losses
                 pct = round((wins / total * 100), 1) if total > 0 else 0
         except Exception as e:
@@ -160,4 +163,4 @@ def index():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port)
