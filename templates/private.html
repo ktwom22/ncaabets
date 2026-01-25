@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #0b0e14; color: white; padding: 20px; font-family: sans-serif; }
+        .vault-card { background: #1c2128; border: 2px solid #f1c40f; border-radius: 15px; padding: 30px; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 600px;">
+        <div class="vault-card text-center">
+            <h1 class="text-warning fw-bold">VAULT STATS</h1>
+            <div class="display-4 fw-bold">{{ stats.wins }}W - {{ stats.losses }}L</div>
+            <div class="h2 text-success">{{ stats.rate }}% WIN RATE</div>
+        </div>
+
+        <h5 class="text-muted text-uppercase mb-3">Historical Logs</h5>
+        {% for r in records|reverse %}
+        <div class="d-flex justify-content-between align-items-center border-bottom border-secondary py-3">
+            <div>
+                <div class="fw-bold">{{ r.Team }}</div>
+                <small class="text-muted">{{ r.Date }} | {{ r.Matchup }}</small>
+            </div>
+            <div class="text-end">
+                <div class="small">{{ r.Score }}</div>
+                <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}">{{ r.Result }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
