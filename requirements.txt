@@ -2,6 +2,7 @@ flask
 pandas
 requests
 gspread
-oauth2client
-pyasn1-modules
-binascii
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+gunicorn
