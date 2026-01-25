@@ -1,4 +1,4 @@
-import os, io, requests, gspread, json, pandas as pd
+import os, io, requests, gspread, pandas as pd
 from flask import Flask, render_template
 from datetime import datetime
 from google.oauth2 import service_account
@@ -6,30 +6,20 @@ from google.oauth2 import service_account
 app = Flask(__name__)
 
 # --- CONFIG ---
-# Your Published CSV for reading (Fast & No Quotas)
-SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
-# Your Sheet ID for writing (From the URL of your Google Sheet)
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
+CREDS_FILE = 'creds.json'
 
-# --- MODERN SECURE AUTH ---
+# --- AUTH ---
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds_json = os.getenv("GOOGLE_CREDS_JSON")  # Looks for Railway/Render secret
-
 try:
-    if creds_json:
-        # For Deployment (reads from Environment Variable)
-        info = json.loads(creds_json)
-        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPE)
-    else:
-        # For Local Development (reads from file)
-        creds = service_account.Credentials.from_service_account_file('creds.json', scopes=SCOPE)
+    creds = service_account.Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
     G_CLIENT = gspread.authorize(creds)
 except Exception as e:
     print(f"AUTH ERROR: {e}")
     G_CLIENT = None
 
 
-# --- HELPERS ---
 def normalize(name):
     if not name: return ""
     return str(name).upper().replace(".", "").replace("'", "").strip()
@@ -45,7 +35,7 @@ def clean_val(val, default=0.0):
 
 @app.route('/')
 def index():
-    # 1. FETCH LIVE PICKS DATA
+    # 1. FETCH LIVE PICKS FROM GOOGLE SHEET
     try:
         res = requests.get(f"{SHEET_CSV_URL}&cb={datetime.now().timestamp()}", timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
@@ -76,10 +66,11 @@ def index():
             'instruction': f"TAKE {pick} {'+' if pick_spr > 0 else ''}{pick_spr}",
             'conf': "elite" if edge >= 6 else "solid" if edge >= 3 else "low",
             'a_logo': str(row.get('Away Logo', '')), 'h_logo': str(row.get('Home Logo', '')),
+            'a_rank': int(ra), 'h_rank': int(rh), 'a_ppg': pa, 'a_ppga': pga, 'h_ppg': ph, 'h_ppga': pgh,
             'time': row.get('Game Time', 'TBD')
         })
 
-    # 2. ESPN LIVE RESULTS & AUTO-ARCHIVE
+    # 2. ESPN LIVE SCORES (With Logo Support & WIN/LOSS status)
     live_scores = []
     try:
         espn = requests.get(
@@ -88,54 +79,78 @@ def index():
         for event in espn.get('events', []):
             comp = event['competitions'][0]
             teams = comp['competitors']
-            names = [t['team']['displayName'].upper() for t in teams]
+
+            away_e = next(t for t in teams if t['homeAway'] == 'away')
+            home_e = next(t for t in teams if t['homeAway'] == 'home')
+            e_names = [away_e['team']['displayName'].upper(), home_e['team']['displayName'].upper()]
+
             for p in all_games:
-                if normalize(p['away']) in [normalize(n) for n in names] or normalize(p['home']) in [normalize(n) for n
-                                                                                                     in names]:
+                if normalize(p['away']) in [normalize(n) for n in e_names] or normalize(p['home']) in [normalize(n) for
+                                                                                                       n in e_names]:
                     status = event['status']['type']['description']
-                    away = next(t for t in teams if t['homeAway'] == 'away')
-                    home = next(t for t in teams if t['homeAway'] == 'home')
-                    res = ""
+                    res_label = ""
                     if "Final" in status:
-                        win_obj = teams[0] if teams[0].get('winner') else teams[1]
-                        res = "WIN" if normalize(p['pick']) in normalize(win_obj['team']['displayName']) else "LOSS"
+                        winner = next(t for t in teams if t.get('winner') == True)
+                        res_label = "WIN" if normalize(p['pick']) in normalize(
+                            winner['team']['displayName']) else "LOSS"
 
                     live_scores.append({
-                        "id": str(event['id']), "status": status, "is_final": "Final" in status,
-                        "score": f"{away['score']}-{home['score']}", "our_result": res, "parent": p
+                        "id": str(event['id']),
+                        "status": status,
+                        "is_final": "Final" in status,
+                        "score": f"{away_e['score']} - {home_e['score']}",
+                        "our_result": res_label,
+                        "away_name": away_e['team']['displayName'],
+                        "away_logo": away_e['team']['logo'],
+                        "home_name": home_e['team']['displayName'],
+                        "home_logo": home_e['team']['logo'],
+                        "my_pick": p['pick']
                     })
     except:
         pass
 
-    # 3. CALCULATE STATS FROM ARCHIVE TAB
+    # 3. ARCHIVE LOGIC (RE-WRITTEN FOR CORRECT STATS)
     wins, losses, pct = 0, 0, 0
     if G_CLIENT:
         try:
             workbook = G_CLIENT.open_by_key(SHEET_ID)
-            archive_sheet = workbook.worksheet("Archive")
+            try:
+                archive_sheet = workbook.worksheet("Archive")
+            except:
+                archive_sheet = workbook.get_worksheet(0)
 
-            # Write new results
-            existing_ids = archive_sheet.col_values(16)  # Assume Col P is ESPN ID
+            # Sync new results to sheet
+            existing_ids = [str(i).strip() for i in archive_sheet.col_values(16)]
             for s in [x for x in live_scores if x['is_final']]:
-                if s['id'] not in existing_ids:
-                    p = s['parent']
-                    archive_sheet.append_row([
-                        datetime.now().strftime('%Y-%m-%d'), f"{p['away']} @ {p['home']}",
-                        s['our_result'], s['score'], p['pick'], p['pick_spr'],
-                        p['a_p'], p['h_p'], p['edge'], "", "", "", "", "", "", s['id']
-                    ])
+                if str(s['id']) not in existing_ids:
+                    # Find matching parent pick data
+                    match = next((g for g in all_games if
+                                  normalize(g['away']) == normalize(s['away_name']) or normalize(
+                                      g['home']) == normalize(s['home_name'])), None)
+                    if match:
+                        archive_sheet.append_row([
+                            datetime.now().strftime('%m/%d/%Y'), f"{match['away']} @ {match['home']}",
+                            s['our_result'], s['score'], match['pick'], match['pick_spr'],
+                            match['a_p'], match['h_p'], match['edge'], match['a_ppg'], match['a_ppga'],
+                            match['h_ppg'], match['h_ppga'], match['a_rank'], match['h_rank'], str(s['id'])
+                        ])
 
-            # Read stats
-            arc_data = archive_sheet.get_all_records()
-            if arc_data:
-                arc_df = pd.DataFrame(arc_data)
-                arc_df.columns = arc_df.columns.str.strip()
-                if 'Result' in arc_df.columns:
-                    results = arc_df['Result'].astype(str).str.strip().str.upper()
-                    wins = (results == 'WIN').sum()
-                    losses = (results == 'LOSS').sum()
-                    total = wins + losses
-                    pct = round((wins / total * 100), 1) if total > 0 else 0
+            # Recalculate Stats from Column C (Result)
+            all_rows = archive_sheet.get_all_values()
+            if len(all_rows) > 1:
+                headers = [h.strip().upper() for h in all_rows[0]]
+                res_idx = headers.index("RESULT") if "RESULT" in headers else 2
+
+                for row in all_rows[1:]:
+                    if len(row) > res_idx:
+                        val = str(row[res_idx]).strip().upper()
+                        if "WIN" in val:
+                            wins += 1
+                        elif "LOSS" in val:
+                            losses += 1
+
+                total = wins + losses
+                pct = round((wins / total * 100), 1) if total > 0 else 0
         except Exception as e:
             print(f"Archive Error: {e}")
 
@@ -145,4 +160,4 @@ def index():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=True)
