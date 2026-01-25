@@ -1,7 +1,7 @@
 import os, io, requests, gspread, pandas as pd
 from flask import Flask, render_template
 from datetime import datetime
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2 import service_account
 
 app = Flask(__name__)
 
@@ -10,15 +10,15 @@ SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBpp
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
 CREDS_FILE = 'creds.json'
 
-# --- GOOGLE AUTH (Loading from File to Fix Padding Error) ---
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# --- MODERN GOOGLE AUTH ---
+SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 try:
-    CREDS = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, SCOPE)
-    G_CLIENT = gspread.authorize(CREDS)
+    # Service account authentication for Python 3.13
+    creds = service_account.Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
+    G_CLIENT = gspread.authorize(creds)
 except Exception as e:
     print(f"CRITICAL AUTH ERROR: {e}")
-    # We don't stop the app; we let it try to load the dashboard without the archive
     G_CLIENT = None
 
 
@@ -38,7 +38,7 @@ def clean_val(val, default=0.0):
 
 @app.route('/')
 def index():
-    # 1. FETCH CURRENT DATA
+    # 1. FETCH DATA VIA CSV (Bypasses API quotas for reading)
     try:
         res = requests.get(f"{SHEET_CSV_URL}&cb={datetime.now().timestamp()}", timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
@@ -47,7 +47,6 @@ def index():
         return f"<h1>Sync Error: {e}</h1>"
 
     all_games = []
-    # 2. MODEL LOGIC
     for _, row in df.iterrows():
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         if not a or a.lower() == 'nan': continue
@@ -74,7 +73,7 @@ def index():
             'time': row.get('Game Time', 'TBD')
         })
 
-    # 3. ESPN LIVE RESULTS
+    # 2. ESPN LIVE SCORES
     live_scores = []
     try:
         espn = requests.get(
@@ -104,14 +103,15 @@ def index():
     except:
         pass
 
-    # 4. ARCHIVE SYNC
+    # 3. ARCHIVE LOGIC (Read/Write to your Google Sheet)
     wins, losses, pct = 0, 0, 0
     if G_CLIENT:
         try:
             workbook = G_CLIENT.open_by_key(SHEET_ID)
             archive_sheet = workbook.worksheet("Archive")
-            existing_ids = archive_sheet.col_values(16)
 
+            # Sync any new finals to the sheet
+            existing_ids = archive_sheet.col_values(16)
             for s in [x for x in live_scores if x['is_final']]:
                 if str(s['id']) not in existing_ids:
                     p = s['parent']
@@ -122,7 +122,7 @@ def index():
                         p['h_ppg'], p['h_ppga'], p['a_rank'], p['h_rank'], s['id']
                     ])
 
-            # 5. FETCH STATS
+            # Recalculate stats based on the Archive tab
             arc_data = archive_sheet.get_all_records()
             if arc_data:
                 arc_df = pd.DataFrame(arc_data)
