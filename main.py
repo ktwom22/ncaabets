@@ -1,156 +1,157 @@
-import os
-import io
-import requests
-import pandas as pd
+import os, io, requests, pandas as pd
 from flask import Flask, render_template, request, Response, send_file
 from datetime import datetime
 from functools import wraps
 
 app = Flask(__name__)
 
-# --- CONFIG ---
+# --- SECURE CONFIG ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
-ARCHIVE_FILE = 'archive.csv'
-ADMIN_USER = "admin"
-ADMIN_PASS = "winning123"
-DEFAULT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/2.png&w=80&h=80"
+# Stores the data in a dedicated folder to keep it hidden
+ARCHIVE_PATH = os.path.join(os.getcwd(), 'hidden_learning_data', 'ncaa_archive.csv')
+os.makedirs(os.path.dirname(ARCHIVE_PATH), exist_ok=True)
+
+ADMIN_USER, ADMIN_PASS = "admin", "winning123"
+DEFAULT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/2.png"
 
 
+# --- AUTHENTICATION ---
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
         if not auth or not (auth.username == ADMIN_USER and auth.password == ADMIN_PASS):
-            return Response('Login Required', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+            return Response('Access Denied', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
         return f(*args, **kwargs)
 
     return decorated
 
 
+# --- ULTRA FUZZY MATCHING ---
+def normalize(name):
+    if not name: return ""
+    name = str(name).upper().replace(".", "").replace("'", "").strip()
+    for word in ["STATE", "UNIV", "UNIVERSITY", "ST", "NC", "TECH", "TECHNOLOGY", "A&M"]:
+        name = name.replace(f" {word}", "")
+    return name.strip()
+
+
+def is_fuzzy_match(pick_name, espn_names):
+    p_norm = normalize(pick_name)
+    for e_name in espn_names:
+        e_norm = normalize(e_name)
+        if p_norm in e_norm or e_norm in p_norm: return True
+    return False
+
+
+# --- DATA HELPERS ---
 def clean_val(val, default=0.0):
     try:
-        if pd.isna(val) or str(val).strip() in ['---', '', 'None']: return default
+        if pd.isna(val) or str(val).strip() in ['---', '', 'None', 'nan']: return default
         return float(val)
     except:
         return default
 
 
-def get_completed_games():
+def get_live_scoreboard():
     url = "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
     try:
-        res = requests.get(url, params={'groups': '50', 'limit': '100'}, timeout=5).json()
-        completed = []
+        res = requests.get(url, params={'groups': '50', 'limit': '350'}, timeout=5).json()
+        games_list = []
         for event in res.get('events', []):
-            if event['status']['type']['description'] == "Final":
-                teams = event['competitions'][0]['competitors']
-                a_name = teams[1]['team']['displayName'].upper()
-                h_name = teams[0]['team']['displayName'].upper()
-                completed.append({
-                    "matchup": f"{teams[1]['team']['shortDisplayName']} @ {teams[0]['team']['shortDisplayName']}",
-                    "score": f"{teams[1]['score']} - {teams[0]['score']}",
-                    "winner": a_name if int(teams[1]['score']) > int(teams[0]['score']) else h_name,
-                    "search_pool": [a_name, h_name, teams[1]['team']['shortDisplayName'].upper(),
-                                    teams[0]['team']['shortDisplayName'].upper()],
-                    "espn_id": event['id']
-                })
-        return completed
+            status = event['status']['type']['description']
+            comp = event['competitions'][0]
+            teams = comp['competitors']
+            away = next(t for t in teams if t['homeAway'] == 'away')
+            home = next(t for t in teams if t['homeAway'] == 'home')
+            winner = ""
+            if "Final" in status:
+                win_obj = teams[0] if teams[0].get('winner') else teams[1]
+                winner = win_obj['team']['displayName'].upper()
+            games_list.append({
+                "espn_id": str(event['id']), "status": status, "is_final": "Final" in status,
+                "score": f"{away['score']}-{home['score']}", "winner": winner,
+                "away_name": away['team']['displayName'].upper(), "home_name": home['team']['displayName'].upper(),
+                "names": [t['team']['displayName'].upper() for t in teams]
+            })
+        return games_list
     except:
         return []
+
+
+# --- ROUTES ---
+
+@app.route('/private/secure-download')
+@requires_auth
+def download():
+    if not os.path.exists(ARCHIVE_PATH): return "Archive is empty."
+    return send_file(ARCHIVE_PATH, as_attachment=True)
 
 
 @app.route('/')
 def index():
     try:
-        res = requests.get(f"{SHEET_URL}&cb={datetime.now().timestamp()}", timeout=5)
+        res = requests.get(f"{SHEET_URL}&cb={datetime.now().timestamp()}", timeout=8)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
         df.columns = df.columns.str.strip()
     except:
-        return "<h1>Sheet Connection Error</h1>"
+        return "<h1>Sheet Sync Error</h1>"
 
-    all_games, active_picks = [], []
+    all_games, live_scores = [], get_live_scoreboard()
+
     for _, row in df.iterrows():
-        # DATA EXTRACTION
-        g_time = row.get('Game Time', 'N/A')
-        a_team, h_team = row.get('Away Team'), row.get('Home Team')
-        fd_spread = clean_val(row.get('FD Spread'))
-        fd_total = clean_val(row.get('FD Total'))
-        r_away, r_home = clean_val(row.get('Rank Away'), 182), clean_val(row.get('Rank Home'), 182)
-        ppg_a, ppg_h = clean_val(row.get('PPG Away'), 70), clean_val(row.get('PPG Home'), 70)
-        ppga_a, ppga_h = clean_val(row.get('PPGA Away'), 70), clean_val(row.get('PPGA Home'), 70)
+        a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
+        if not a or a.lower() == 'nan': continue
 
-        # PROJECTION LOGIC
-        a_p = 71.0 + ((182 - r_away) / 18.0) + (((ppg_a - 72) + (72 - ppga_h)) * 0.4)
-        h_p = 71.0 + ((182 - r_home) / 18.0) + (((ppg_h - 72) + (72 - ppga_a)) * 0.4) + 3.2
+        # Stats & Spread Logic
+        h_spr = clean_val(row.get('FD Spread'))
+        a_spr = -h_spr
+        ra, rh = clean_val(row.get('Rank Away'), 182), clean_val(row.get('Rank Home'), 182)
+        pa, ph = clean_val(row.get('PPG Away'), 72.0), clean_val(row.get('PPG Home'), 72.0)
+        pga, pgh = clean_val(row.get('PPGA Away'), 72.0), clean_val(row.get('PPGA Home'), 72.0)
 
-        edge = (a_p - h_p) - fd_spread
-        status = "AWAY" if edge > 1.5 else "HOME" if edge < -1.5 else "NONE"
-        pick_team = a_team if status == "AWAY" else h_team if status == "HOME" else None
+        # Projections
+        ap = 71.0 + ((182 - ra) / 18.0) + (((pa - 72) + (72 - pgh)) * 0.4)
+        hp = 71.0 + ((182 - rh) / 18.0) + (((ph - 72) + (72 - pga)) * 0.4) + 3.2
+        model_line = round(ap - hp, 1)
 
-        a_logo = row.get('Away Logo', DEFAULT_LOGO)
-        h_logo = row.get('Home Logo', DEFAULT_LOGO)
+        edge_to_away = model_line - a_spr
+        pick, pick_spr, edge = (a, a_spr, abs(edge_to_away)) if edge_to_away > 0 else (h, h_spr, abs(edge_to_away))
 
-        game_data = {
-            'time': g_time, 'away': a_team, 'home': h_team, 'a_p': round(a_p, 1), 'h_p': round(h_p, 1),
-            'edge': abs(round(edge, 1)), 'status': status, 'pick': pick_team, 'a_logo': a_logo, 'h_logo': h_logo,
-            'a_v': fd_spread * -1, 'h_v': fd_spread, 'total': fd_total,
-            'r_a': r_away, 'r_h': r_home, 'ppg_a': ppg_a, 'ppg_h': ppg_h, 'ppga_a': ppga_a, 'ppga_h': ppga_h
+        g_data = {
+            'time': row.get('Game Time', 'TBD'), 'away': a, 'home': h, 'a_p': round(ap, 1), 'h_p': round(hp, 1),
+            'edge': round(edge, 1), 'pick': pick.upper(), 'pick_spr': pick_spr,
+            'instruction': f"TAKE {pick} {'+' if pick_spr > 0 else ''}{pick_spr}",
+            'conf': "elite" if edge >= 6 else "solid" if edge >= 3 else "low",
+            'a_logo': str(row.get('Away Logo')) if str(row.get('Away Logo')) != 'nan' else DEFAULT_LOGO,
+            'h_logo': str(row.get('Home Logo')) if str(row.get('Home Logo')) != 'nan' else DEFAULT_LOGO,
+            'a_rank': int(ra), 'h_rank': int(rh), 'a_ppg': pa, 'a_ppga': pga, 'h_ppg': ph, 'h_ppga': pgh
         }
-        all_games.append(game_data)
-        if pick_team: active_picks.append(game_data)
+        all_games.append(g_data)
 
-    # ARCHIVING
-    scores = get_completed_games()
-    headers = ["Date", "Game_Time", "Pick", "Result", "Final_Score", "Away_Team", "Home_Team",
-               "Proj_Away", "Proj_Home", "FD_Spread", "FD_Total", "Rank_A", "Rank_H",
-               "PPG_A", "PPG_H", "PPGA_A", "PPGA_H", "ESPN_ID"]
+    # Persistence Layer
+    if not os.path.exists(ARCHIVE_PATH):
+        pd.DataFrame(
+            columns=["Date", "Matchup", "Pick", "Spread", "Edge", "A_PPG", "A_PPGA", "H_PPG", "H_PPGA", "Result",
+                     "Score", "ESPN_ID"]).to_csv(ARCHIVE_PATH, index=False)
 
-    if not os.path.exists(ARCHIVE_FILE):
-        pd.DataFrame(columns=headers).to_csv(ARCHIVE_FILE, index=False)
+    archive_df = pd.read_csv(ARCHIVE_PATH)
+    for s in [x for x in live_scores if x['is_final']]:
+        if str(s['espn_id']) not in archive_df['ESPN_ID'].astype(str).values:
+            for p in all_games:
+                if is_fuzzy_match(p['pick'], s['names']):
+                    win_norm, pick_norm = normalize(s['winner']), normalize(p['pick'])
+                    res = "WIN" if (pick_norm in win_norm or win_norm in pick_norm) else "LOSS"
+                    new_entry = {
+                        "Date": datetime.now().strftime('%Y-%m-%d'), "Matchup": f"{p['away']} @ {p['home']}",
+                        "Pick": p['pick'], "Spread": p['pick_spr'], "Edge": p['edge'],
+                        "A_PPG": p['a_ppg'], "A_PPGA": p['a_ppga'], "H_PPG": p['h_ppg'], "H_PPGA": p['h_ppga'],
+                        "Result": res, "Score": s['score'], "ESPN_ID": s['espn_id']
+                    }
+                    pd.DataFrame([new_entry]).to_csv(ARCHIVE_PATH, mode='a', header=False, index=False)
+                    break
 
-    history_df = pd.read_csv(ARCHIVE_FILE)
-    for s in scores:
-        for p in active_picks:
-            p_name = str(p['pick']).upper()
-            if any(p_name in name for name in s['search_pool']):
-                outcome = "WIN" if p_name in s['winner'] else "LOSS"
-                s['result_label'] = outcome
-                if str(s['espn_id']) not in history_df['ESPN_ID'].astype(str).values:
-                    new_row = pd.DataFrame([{
-                        "Date": datetime.now().strftime('%Y-%m-%d'), "Game_Time": p['time'],
-                        "Pick": p['pick'], "Result": outcome, "Final_Score": s['score'],
-                        "Away_Team": p['away'], "Home_Team": p['home'],
-                        "Proj_Away": p['a_p'], "Proj_Home": p['h_p'],
-                        "FD_Spread": p['h_v'], "FD_Total": p['total'],
-                        "Rank_A": p['r_a'], "Rank_H": p['r_h'],
-                        "PPG_A": p['ppg_a'], "PPG_H": p['ppg_h'],
-                        "PPGA_A": p['ppga_a'], "PPGA_H": p['ppga_h'], "ESPN_ID": s['espn_id']
-                    }])
-                    new_row.to_csv(ARCHIVE_FILE, mode='a', header=False, index=False)
-                    history_df = pd.concat([history_df, new_row], ignore_index=True)
-
-    daily_df = history_df[history_df['Date'] == datetime.now().strftime('%Y-%m-%d')]
-    stats = {'wins': len(daily_df[daily_df['Result'] == 'WIN']), 'total': len(daily_df),
-             'rate': round((len(daily_df[daily_df['Result'] == 'WIN']) / len(daily_df) * 100), 1) if len(
-                 daily_df) > 0 else 0}
-
-    parlay = sorted([g for g in all_games if g['status'] != 'NONE'], key=lambda x: x['edge'], reverse=True)[:3]
-    return render_template('index.html', games=all_games, parlay=parlay, scores=scores, stats=stats)
-
-
-@app.route('/private')
-@requires_auth
-def private_archive():
-    if not os.path.exists(ARCHIVE_FILE): return "<h1>Vault empty.</h1>"
-    df = pd.read_csv(ARCHIVE_FILE)
-    wins = len(df[df['Result'] == 'WIN'])
-    stats = {'wins': wins, 'losses': len(df) - wins, 'rate': round((wins / len(df) * 100), 1) if len(df) > 0 else 0}
-    return render_template('private.html', stats=stats, records=df.tail(100).to_dict('records'))
-
-
-@app.route('/download')
-@requires_auth
-def download_vault():
-    return send_file(ARCHIVE_FILE, as_attachment=True)
+    return render_template('index.html', games=all_games, live_scores=live_scores)
 
 
 if __name__ == '__main__':

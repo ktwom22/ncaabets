@@ -1,72 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCAAB Value Engine</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge Engine Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #0b0e14; color: #e6edf3; padding: 10px; font-family: sans-serif; }
-        .main-container { max-width: 500px; margin: auto; }
-        .card-custom { background: #161b22; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
-        .edge-badge { background: #f1c40f; color: #000; padding: 4px 10px; border-radius: 6px; font-weight: 900; }
-        .bg-pick { background: #238636; color: white; padding: 8px; text-align: center; font-weight: bold; }
-        .logo { width: 45px; height: 45px; object-fit: contain; }
-        .stat-card { background: #1c2128; border: 1px solid #30363d; border-radius: 12px; padding: 15px; margin-bottom: 20px; text-align: center; }
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --gold: #f2cc60; --text: #f0f6fc; }
+        body { background-color: var(--bg); color: var(--text); font-family: sans-serif; overflow-x: hidden; }
+        .game-container { perspective: 1200px; margin-bottom: 25px; height: 350px; cursor: pointer; }
+        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
+        .game-container.is-flipped .card-inner { transform: rotateY(180deg); }
+        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); overflow: hidden; }
+        .card-back { transform: rotateY(180deg); background: #010409; }
+        .header-play { padding: 15px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+        .matchup { padding: 25px 10px; display: flex; justify-content: space-around; align-items: center; text-align: center; }
+        .t-logo { width: 55px; height: 55px; margin-bottom: 8px; }
+        .strip { display: grid; grid-template-columns: 1fr 1fr; background: #1c2128; border-top: 1px solid var(--border); padding: 12px; margin-top: auto; }
+        .sidebar { height: 100%; width: 0; position: fixed; top: 0; right: 0; background: var(--card); transition: 0.3s; z-index: 2000; border-left: 1px solid var(--border); overflow-x: hidden; }
+        .stats-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #21262d; font-size: 0.85rem; }
     </style>
 </head>
 <body>
-<div class="main-container">
-    <h2 class="text-center fw-bold mb-4" style="color:#f1c40f;">🏀 NCAAB WAR ROOM</h2>
 
-    <div class="stat-card">
-        <h6 class="text-muted text-uppercase small">Daily Grade</h6>
+    <nav class="navbar border-bottom border-secondary mb-4 p-3 bg-dark sticky-top">
+        <div class="container d-flex justify-content-between">
+            <span class="fw-bold">NCAAB EDGE ENGINE</span>
+            <button onclick="toggleSidebar()" class="btn btn-sm btn-outline-info">LIVE SCORES & TOOLS</button>
+        </div>
+    </nav>
+
+    <div class="container">
         <div class="row">
-            <div class="col-6 border-end border-secondary">
-                <div class="h3 fw-bold mb-0">{{ stats.wins }}-{{ stats.total - stats.wins }}</div>
-                <small class="text-muted">RECORD</small>
+            {% for g in games %}
+            <div class="col-md-6 col-lg-4">
+                <div class="game-container" onclick="this.classList.toggle('is-flipped')">
+                    <div class="card-inner shadow">
+                        <div class="card-front">
+                            <div class="header-play">
+                                <span class="fw-bold {{ 'text-warning' if g.conf == 'elite' else 'text-info' }}">{{ g.instruction }}</span>
+                                <span class="float-end text-secondary" style="font-size: 0.6rem">STATS ⟳</span>
+                            </div>
+                            <div class="matchup">
+                                <div><img src="{{ g.a_logo }}" class="t-logo"><div class="small fw-bold">{{ g.away }}</div><div class="h3">{{ g.a_p }}</div></div>
+                                <div class="text-secondary small">at</div>
+                                <div><img src="{{ g.h_logo }}" class="t-logo"><div class="small fw-bold">{{ g.home }}</div><div class="h3">{{ g.h_p }}</div></div>
+                            </div>
+                            <div class="strip">
+                                <div class="border-end border-secondary"><small class="text-secondary d-block">TIP-OFF</small><strong>{{ g.time }}</strong></div>
+                                <div><small class="text-secondary d-block">EDGE</small><strong class="text-warning">+{{ g.edge }}</strong></div>
+                            </div>
+                        </div>
+                        <div class="card-back p-3">
+                            <div class="border-bottom border-secondary pb-2 mb-2 fw-bold text-info">SCOUTING DATA</div>
+                            <div class="stats-row text-secondary"><span>METRIC</span><span>AWAY</span><span>HOME</span></div>
+                            <div class="stats-row"><span>RANK</span><span>#{{ g.a_rank }}</span><span>#{{ g.h_rank }}</span></div>
+                            <div class="stats-row"><span>PPG</span><span>{{ g.a_ppg }}</span><span>{{ g.h_ppg }}</span></div>
+                            <div class="stats-row"><span>PPGA</span><span>{{ g.a_ppga }}</span><span>{{ g.h_ppga }}</span></div>
+                            <div class="mt-auto text-center small text-secondary">Click to flip back</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-6">
-                <div class="h3 fw-bold mb-0 text-success">{{ stats.rate }}%</div>
-                <small class="text-muted">WIN RATE</small>
-            </div>
+            {% endfor %}
         </div>
     </div>
 
-    {% for game in games %}
-    <div class="card-custom">
-        <div class="{% if game.status != 'NONE' %}bg-pick{% else %}bg-secondary p-1 text-center small{% endif %}">
-            {% if game.status != 'NONE' %}🎯 PICK: {{ game.pick }}{% else %}NO VALUE{% endif %}
+    <div id="sidebar" class="sidebar">
+        <div class="p-4 border-bottom bg-dark">
+            <h6 class="mb-3 fw-bold">ADMIN TOOLS</h6>
+            <a href="/private/secure-download" class="btn btn-sm btn-success w-100 mb-4">Download Learning CSV</a>
+            <h6 class="mb-0 fw-bold">LIVE SCOREBOARD</h6>
         </div>
-        <div class="p-3 text-center">
-            <div class="row align-items-center">
-                <div class="col-4">
-                    <img src="{{ game.a_logo }}" class="logo">
-                    <div class="h4 fw-bold mb-0">{{ game.a_p }}</div>
+        <div class="p-3">
+            {% for s in live_scores %}
+            <div class="mb-3 border-bottom border-secondary pb-2">
+                <div class="d-flex justify-content-between small fw-bold">
+                    <span>{{ s.away_name }} @ {{ s.home_name }}</span>
+                    <span class="text-info">{{ s.score }}</span>
                 </div>
-                <div class="col-4">
-                    <small class="text-muted d-block">EDGE</small>
-                    <span class="edge-badge">{{ game.edge }}</span>
-                </div>
-                <div class="col-4">
-                    <img src="{{ game.h_logo }}" class="logo">
-                    <div class="h4 fw-bold mb-0">{{ game.h_p }}</div>
-                </div>
+                <div style="font-size: 0.65rem" class="text-secondary">{{ s.status }}</div>
             </div>
+            {% endfor %}
         </div>
     </div>
-    {% endfor %}
 
-    <div class="bg-dark rounded p-3 border border-danger mt-5">
-        <h6 class="text-center text-danger fw-bold mb-3">🏁 RECENT FINALS</h6>
-        {% for score in scores %}
-        <div class="d-flex justify-content-between border-bottom border-secondary py-2 small">
-            <span>{{ score.matchup }}
-                {% if score.result_label == "WIN" %}<span class="badge bg-success">WIN</span>{% elif score.result_label == "LOSS" %}<span class="badge bg-danger">LOSS</span>{% endif %}
-            </span>
-            <span class="fw-bold">{{ score.score }}</span>
-        </div>
-        {% endfor %}
-    </div>
-</div>
+    <script>
+        function toggleSidebar() {
+            const s = document.getElementById('sidebar');
+            s.style.width = s.style.width === '320px' ? '0' : '320px';
+        }
+        setTimeout(() => window.location.reload(), 300000); // 5 min refresh
+    </script>
 </body>
 </html>
