@@ -1,4 +1,7 @@
-Flask
+flask
 pandas
 requests
-gunicorn
+gspread
+oauth2client
+pyasn1-modules
+binascii
