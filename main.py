@@ -1,4 +1,4 @@
-import os, io, requests, gspread, pandas as pd
+import os, io, requests, gspread, json, pandas as pd
 from flask import Flask, render_template
 from datetime import datetime
 from google.oauth2 import service_account
@@ -6,19 +6,26 @@ from google.oauth2 import service_account
 app = Flask(__name__)
 
 # --- CONFIG ---
-SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
+# Your Published CSV for reading (Fast & No Quotas)
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
+# Your Sheet ID for writing (From the URL of your Google Sheet)
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
-CREDS_FILE = 'creds.json'
 
-# --- MODERN GOOGLE AUTH ---
+# --- MODERN SECURE AUTH ---
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds_json = os.getenv("GOOGLE_CREDS_JSON")  # Looks for Railway/Render secret
 
 try:
-    # Service account authentication for Python 3.13
-    creds = service_account.Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPE)
+    if creds_json:
+        # For Deployment (reads from Environment Variable)
+        info = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPE)
+    else:
+        # For Local Development (reads from file)
+        creds = service_account.Credentials.from_service_account_file('creds.json', scopes=SCOPE)
     G_CLIENT = gspread.authorize(creds)
 except Exception as e:
-    print(f"CRITICAL AUTH ERROR: {e}")
+    print(f"AUTH ERROR: {e}")
     G_CLIENT = None
 
 
@@ -38,7 +45,7 @@ def clean_val(val, default=0.0):
 
 @app.route('/')
 def index():
-    # 1. FETCH DATA VIA CSV (Bypasses API quotas for reading)
+    # 1. FETCH LIVE PICKS DATA
     try:
         res = requests.get(f"{SHEET_CSV_URL}&cb={datetime.now().timestamp()}", timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
@@ -69,11 +76,10 @@ def index():
             'instruction': f"TAKE {pick} {'+' if pick_spr > 0 else ''}{pick_spr}",
             'conf': "elite" if edge >= 6 else "solid" if edge >= 3 else "low",
             'a_logo': str(row.get('Away Logo', '')), 'h_logo': str(row.get('Home Logo', '')),
-            'a_rank': int(ra), 'h_rank': int(rh), 'a_ppg': pa, 'a_ppga': pga, 'h_ppg': ph, 'h_ppga': pgh,
             'time': row.get('Game Time', 'TBD')
         })
 
-    # 2. ESPN LIVE SCORES
+    # 2. ESPN LIVE RESULTS & AUTO-ARCHIVE
     live_scores = []
     try:
         espn = requests.get(
@@ -96,39 +102,40 @@ def index():
 
                     live_scores.append({
                         "id": str(event['id']), "status": status, "is_final": "Final" in status,
-                        "score": f"{away['score']}-{home['score']}", "our_result": res, "parent": p,
-                        "away_name": away['team']['displayName'].upper(),
-                        "home_name": home['team']['displayName'].upper()
+                        "score": f"{away['score']}-{home['score']}", "our_result": res, "parent": p
                     })
     except:
         pass
 
-    # 3. ARCHIVE LOGIC (Read/Write to your Google Sheet)
+    # 3. CALCULATE STATS FROM ARCHIVE TAB
     wins, losses, pct = 0, 0, 0
     if G_CLIENT:
         try:
             workbook = G_CLIENT.open_by_key(SHEET_ID)
             archive_sheet = workbook.worksheet("Archive")
 
-            # Sync any new finals to the sheet
-            existing_ids = archive_sheet.col_values(16)
+            # Write new results
+            existing_ids = archive_sheet.col_values(16)  # Assume Col P is ESPN ID
             for s in [x for x in live_scores if x['is_final']]:
-                if str(s['id']) not in existing_ids:
+                if s['id'] not in existing_ids:
                     p = s['parent']
                     archive_sheet.append_row([
                         datetime.now().strftime('%Y-%m-%d'), f"{p['away']} @ {p['home']}",
                         s['our_result'], s['score'], p['pick'], p['pick_spr'],
-                        p['a_p'], p['h_p'], p['edge'], p['a_ppg'], p['a_ppga'],
-                        p['h_ppg'], p['h_ppga'], p['a_rank'], p['h_rank'], s['id']
+                        p['a_p'], p['h_p'], p['edge'], "", "", "", "", "", "", s['id']
                     ])
 
-            # Recalculate stats based on the Archive tab
+            # Read stats
             arc_data = archive_sheet.get_all_records()
             if arc_data:
                 arc_df = pd.DataFrame(arc_data)
-                wins = len(arc_df[arc_df['Result'] == 'WIN'])
-                losses = len(arc_df[arc_df['Result'] == 'LOSS'])
-                pct = round((wins / (wins + losses) * 100), 1) if (wins + losses) > 0 else 0
+                arc_df.columns = arc_df.columns.str.strip()
+                if 'Result' in arc_df.columns:
+                    results = arc_df['Result'].astype(str).str.strip().str.upper()
+                    wins = (results == 'WIN').sum()
+                    losses = (results == 'LOSS').sum()
+                    total = wins + losses
+                    pct = round((wins / total * 100), 1) if total > 0 else 0
         except Exception as e:
             print(f"Archive Error: {e}")
 
@@ -137,4 +144,5 @@ def index():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
