@@ -1,66 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-VGV5RCKBP4"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VGV5RCKBP4"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-VGV5RCKBP4');
+    </script>
 
-  gtag('config', 'G-VGV5RCKBP4');
-</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edge Engine Pro</title>
+    <title>{{ seo.title }}</title>
+    <meta name="description" content="{{ seo.desc }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; }
-        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; }
 
-        /* Responsive Card Grid */
-        .game-container { perspective: 1200px; margin-bottom: 20px; height: 360px; cursor: pointer; }
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; --danger: #da3633; }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
+
+        /* Directional Sidebars */
+        .slider { height: 100%; width: 0; position: fixed; top: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.9); }
+        #stats-sidebar { left: 0; border-right: 1px solid var(--border); }
+        #live-sidebar { right: 0; border-left: 1px solid var(--border); }
+
+        /* Mobile Scale for Sidebars */
+        @media (max-width: 600px) { .slider-open { width: 100% !important; } }
+
+        /* Floating Action Buttons */
+        .fab { position: fixed; bottom: 25px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 900; box-shadow: 0 10px 20px rgba(0,0,0,0.5); transition: 0.2s; }
+        .fab-stats { left: 20px; background: linear-gradient(135deg, #238636, #144620); color: white; }
+        .fab-live { right: 20px; background: linear-gradient(135deg, #da3633, #8b0000); color: white; }
+        .fab:active { transform: scale(0.9); }
+
+        /* Game Cards */
+        .game-container { perspective: 1200px; height: 380px; margin-bottom: 20px; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .game-container.is-flipped .card-inner { transform: rotateY(180deg); }
-        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; }
-        .card-back { transform: rotateY(180deg); background: #010409; }
+        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
 
-        .header-play { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .sidebar-badge { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; }
-        .WIN { background: #238636; color: white; }
-        .LOSS { background: #da3633; color: white; }
+        .header-play { padding: 12px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .matchup { flex-grow: 1; display: flex; justify-content: space-around; align-items: center; text-align: center; padding: 10px; }
+        .t-logo { width: 60px; height: 60px; object-fit: contain; }
+        .score-proj { font-size: 2.2rem; font-weight: 800; color: var(--text); }
+        .strip { display: grid; grid-template-columns: 1fr 1fr; background: #1c2128; border-top: 1px solid var(--border); padding: 15px; }
 
-        .matchup { padding: 30px 10px; display: flex; justify-content: space-around; align-items: center; text-align: center; flex-grow: 1; }
-        .t-logo { width: 60px; height: 60px; margin-bottom: 10px; object-fit: contain; }
-        .strip { display: grid; grid-template-columns: 1fr 1fr; background: #1c2128; border-top: 1px solid var(--border); padding: 15px; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
-
-        /* Mobile Sidebars */
-        .slider { height: 100%; width: 0; position: fixed; top: 0; background: var(--card); transition: 0.3s ease-in-out; z-index: 2000; overflow-x: hidden; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
-        #live-sidebar { right: 0; }
-        #stats-sidebar { left: 0; }
-
-        @media (max-width: 600px) {
-            .slider { width: 0; } /* Will open to 100% via JS */
-            .btn-float { width: 50px; height: 50px; font-size: 1.2rem; }
-        }
-
-        /* Floating Controls */
-        .fab-container { position: fixed; bottom: 25px; z-index: 3000; }
-        .fab-right { right: 20px; }
-        .fab-left { left: 20px; }
-        .btn-float { width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+        /* Live Tracker Cards */
+        .live-card { background: #0d1117; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; display: block; text-decoration: none; color: inherit; }
+        .live-score-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .live-pts { font-family: monospace; font-size: 1.3rem; font-weight: 900; color: var(--accent); }
+        .WIN { background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+        .LOSS { background: var(--danger); color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
     </style>
 </head>
 <body>
 
-    <nav class="navbar border-bottom border-secondary mb-3 p-3 bg-dark sticky-top">
-        <div class="container d-flex justify-content-center">
-            <span class="fw-bold text-white letter-spacing-1">EDGE ENGINE <span class="text-info">PRO</span></span>
+    <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="fw-bold">EDGE ENGINE <span class="text-info">PRO</span></span>
+            <small class="text-secondary fw-bold">v6.0 FINAL</small>
         </div>
     </nav>
 
-    <div class="container px-3 pb-5">
-        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+    <div class="container mt-4 pb-5">
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for g in games %}
             <div class="col">
                 <div class="game-container" onclick="this.classList.toggle('is-flipped')">
@@ -68,25 +72,25 @@
                         <div class="card-front">
                             <div class="header-play">
                                 <span class="fw-bold {{ 'text-warning' if g.conf == 'elite' else 'text-info' }}">{{ g.instruction }}</span>
-                                <small class="text-secondary">INFO ⓘ</small>
+                                {% if g.conf == 'elite' %}<span class="badge bg-warning text-dark">ELITE</span>{% endif %}
                             </div>
                             <div class="matchup">
-                                <div><img src="{{ g.a_logo }}" class="t-logo"><div class="small fw-bold">{{ g.away }}</div><div class="h2 mb-0">{{ g.a_p }}</div></div>
-                                <div class="text-secondary small mx-2">VS</div>
-                                <div><img src="{{ g.h_logo }}" class="t-logo"><div class="small fw-bold">{{ g.home }}</div><div class="h2 mb-0">{{ g.h_p }}</div></div>
+                                <div><img src="{{ g.a_logo }}" class="t-logo"><div class="small opacity-75">{{ g.away }}</div><div class="score-proj">{{ g.a_p }}</div></div>
+                                <div class="opacity-25 fw-bold">VS</div>
+                                <div><img src="{{ g.h_logo }}" class="t-logo"><div class="small opacity-75">{{ g.home }}</div><div class="score-proj">{{ g.h_p }}</div></div>
                             </div>
                             <div class="strip">
-                                <div class="border-end border-secondary text-center"><small class="text-secondary d-block uppercase small-caps">Time</small><strong>{{ g.time }}</strong></div>
-                                <div class="text-center"><small class="text-secondary d-block uppercase small-caps">Edge</small><strong class="text-warning">+{{ g.edge }}</strong></div>
+                                <div class="text-center border-end border-secondary"><small class="text-secondary d-block">GAME TIME</small><b>{{ g.time }}</b></div>
+                                <div class="text-center"><small class="text-secondary d-block">MODEL EDGE</small><b class="text-warning">+{{ g.edge }}</b></div>
                             </div>
                         </div>
-                        <div class="card-back p-4">
-                            <h6 class="text-info border-bottom border-secondary pb-2 mb-3">ANALYTICS</h6>
-                            <div class="d-flex justify-content-between mb-3"><span>Away Rank</span><span class="fw-bold">#{{ g.a_rank }}</span></div>
-                            <div class="d-flex justify-content-between mb-3"><span>Away PPG</span><span class="fw-bold">{{ g.a_ppg }}</span></div>
-                            <div class="d-flex justify-content-between mb-3"><span>Home Rank</span><span class="fw-bold">#{{ g.h_rank }}</span></div>
-                            <div class="d-flex justify-content-between mb-3"><span>Home PPG</span><span class="fw-bold">{{ g.h_ppg }}</span></div>
-                            <div class="mt-auto text-center"><button class="btn btn-sm btn-outline-secondary w-100">FLIP BACK</button></div>
+                        <div class="card-back">
+                            <h6 class="text-info border-bottom border-secondary pb-2">PREDICTIVE DATA</h6>
+                            <div class="d-flex justify-content-between small mt-3"><span>Away Rank</span><b>#{{ g.a_rank }}</b></div>
+                            <div class="d-flex justify-content-between small mt-2"><span>Home Rank</span><b>#{{ g.h_rank }}</b></div>
+                            <div class="mt-auto p-2 bg-dark rounded border border-secondary text-center small text-secondary">
+                                Model projects <b>{{ g.edge }}</b> points of value.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -95,54 +99,55 @@
         </div>
     </div>
 
+    <div id="stats-sidebar" class="slider">
+        <div class="p-4 border-bottom bg-dark d-flex justify-content-between">
+            <h5 class="mb-0 fw-bold">MODEL STATS</h5>
+            <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
+        </div>
+        <div class="p-4 text-center">
+            <h1 class="display-3 fw-bold text-info">{{ stats.PCT }}%</h1>
+            <p class="text-secondary small">ACCURACY</p>
+            <div class="row g-2 mt-4">
+                <div class="col-6"><div class="p-3 bg-dark border border-secondary rounded"><h2 class="text-success mb-0">{{ stats.W }}</h2><small>WINS</small></div></div>
+                <div class="col-6"><div class="p-3 bg-dark border border-secondary rounded"><h2 class="text-danger mb-0">{{ stats.L }}</h2><small>LOSSES</small></div></div>
+            </div>
+        </div>
+    </div>
+
     <div id="live-sidebar" class="slider">
         <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">Live Scores</h5>
-            <button class="btn-close btn-close-white" onclick="toggleSidebar('live-sidebar')"></button>
+            <h5 class="mb-0 fw-bold">LIVE SCORES</h5>
+            <button class="btn-close btn-close-white" onclick="toggleS('live-sidebar')"></button>
         </div>
         <div class="p-3">
             {% for s in live_scores %}
-            <div class="p-3 mb-3 border border-secondary rounded bg-dark">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="small fw-bold text-truncate" style="max-width: 150px;">{{ s.away_name }} @ {{ s.home_name }}</span>
-                    <span class="text-info fw-bold">{{ s.score }}</span>
+            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ s.id }}" target="_blank" class="live-card">
+                <div class="live-score-row">
+                    <div class="d-flex align-items-center gap-2"><img src="{{ s.away_logo }}" width="20" height="20"> <b>{{ s.away_name }}</b></div>
+                    <div class="live-pts">{{ s.score_away }}</div>
                 </div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span class="text-secondary" style="font-size: 0.75rem;">{{ s.status }}</span>
-                    {% if s.our_result %}<span class="sidebar-badge {{ s.our_result }}">{{ s.our_result }}</span>{% endif %}
+                <div class="live-score-row">
+                    <div class="d-flex align-items-center gap-2"><img src="{{ s.home_logo }}" width="20" height="20"> <b>{{ s.home_name }}</b></div>
+                    <div class="live-pts">{{ s.score_home }}</div>
                 </div>
-            </div>
-            {% else %}
-            <p class="text-center text-secondary mt-5">No active tracked games.</p>
+                <div class="d-flex justify-content-between mt-2 pt-2 border-top border-secondary align-items-center">
+                    <small class="text-info fw-bold">{% if not s.is_final %}● {% endif %}{{ s.status }}</small>
+                    {% if s.our_result %}<span class="{{ s.our_result }}">{{ s.our_result }}</span>{% endif %}
+                </div>
+            </a>
             {% endfor %}
         </div>
     </div>
 
-    <div id="stats-sidebar" class="slider">
-        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">My Stats</h5>
-            <button class="btn-close btn-close-white" onclick="toggleSidebar('stats-sidebar')"></button>
-        </div>
-        <div class="p-4 text-center">
-            <div class="display-4 fw-bold text-success mb-0">{{ stats.PCT }}%</div>
-            <p class="text-secondary small mb-5">WIN RATE</p>
-            <div class="row g-2 mb-5">
-                <div class="col-6"><div class="p-3 bg-dark border border-secondary rounded"><div class="h3 mb-0">{{ stats.W }}</div><small class="text-success fw-bold">WINS</small></div></div>
-                <div class="col-6"><div class="p-3 bg-dark border border-secondary rounded"><div class="h3 mb-0">{{ stats.L }}</div><small class="text-danger fw-bold">LOSSES</small></div></div>
-            </div>
-            <a href="/protected/download" class="btn btn-info w-100 py-3 fw-bold">DOWNLOAD CSV</a>
-        </div>
-    </div>
-
-    <div class="fab-container fab-right"><button class="btn btn-info btn-float" onclick="toggleSidebar('live-sidebar')">📊</button></div>
-    <div class="fab-container fab-left"><button class="btn btn-success btn-float" onclick="toggleSidebar('stats-sidebar')">📈</button></div>
+    <button class="fab fab-stats" onclick="toggleS('stats-sidebar')">STATS</button>
+    <button class="fab fab-live" onclick="toggleS('live-sidebar')">LIVE</button>
 
     <script>
-        function toggleSidebar(id) {
+        function toggleS(id) {
             const s = document.getElementById(id);
-            const isMobile = window.innerWidth <= 600;
-            const targetWidth = isMobile ? '100%' : '350px';
-            s.style.width = s.style.width === targetWidth ? '0' : targetWidth;
+            const isMobile = window.innerWidth < 600;
+            const openWidth = isMobile ? '100%' : '380px';
+            s.style.width = (s.style.width === openWidth) ? '0' : openWidth;
         }
     </script>
 </body>

@@ -1,40 +1,21 @@
-import os, io, requests, gspread, json, pandas as pd
+import os, io, requests, pandas as pd
 from flask import Flask, render_template
 from datetime import datetime
-from google.oauth2 import service_account
 
 app = Flask(__name__)
 
 # --- CONFIG ---
-SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
-SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
-
-# --- RAILWAY & LOCAL AUTH FIX ---
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
-# 1. Check if Railway has the secret in its memory
-env_creds = os.getenv("GOOGLE_CREDS_JSON")
-
-try:
-    if env_creds:
-        # This runs on Railway
-        creds_dict = json.loads(env_creds)
-        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
-        print("AUTH: Using Railway Environment Variable")
-    else:
-        # This runs on your PC
-        creds = service_account.Credentials.from_service_account_file('creds.json', scopes=SCOPE)
-        print("AUTH: Using local creds.json file")
-
-    G_CLIENT = gspread.authorize(creds)
-except Exception as e:
-    print(f"CRITICAL AUTH ERROR: {e}")
-    G_CLIENT = None
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
+STATS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
 
 
 def normalize(name):
     if not name: return ""
-    return str(name).upper().replace(".", "").replace("'", "").strip()
+    removals = ["STATE", "ST", "UNIVERSITY", "UNIV", "BLUE DEVILS", "TIGERS", "KNIGHTS",
+                "WILDCATS", "BULLDOGS", "HORNETS", "DOLPHINS", "RATTLERS", "TEXANS", "SKYHAWKS"]
+    name = str(name).upper()
+    for r in removals: name = name.replace(r, "")
+    return name.strip()
 
 
 def clean_val(val, default=0.0):
@@ -47,120 +28,113 @@ def clean_val(val, default=0.0):
 
 @app.route('/')
 def index():
-    # 1. FETCH LIVE PICKS FROM GOOGLE SHEET
+    # 1. FETCH ESPN LIVE FEED (Global D1)
+    postponed_teams = []
+    live_data_map = {}
     try:
-        res = requests.get(f"{SHEET_CSV_URL}&cb={datetime.now().timestamp()}", timeout=10)
+        espn_res = requests.get(
+            "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=150",
+            timeout=5).json()
+        for event in espn_res.get('events', []):
+            status_name = event['status']['type']['name']
+            comp = event['competitions'][0]
+            t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
+            t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
+            a_norm = normalize(t_away['team']['displayName'])
+
+            if any(x in status_name for x in ["POSTPONED", "CANCELED"]):
+                postponed_teams.append(a_norm)
+                continue
+
+            live_data_map[a_norm] = {
+                "id": event['id'], "status": event['status']['type']['shortDetail'],
+                "state": event['status']['type']['state'],
+                "score_away": int(clean_val(t_away['score'])), "score_home": int(clean_val(t_home['score'])),
+                "away_logo": t_away['team']['logo'], "home_logo": t_home['team']['logo']
+            }
+    except:
+        pass
+
+    # 2. FETCH SHEET DATA & GRID LOGIC
+    try:
+        res = requests.get(f"{SHEET_URL}&cb={datetime.now().timestamp()}", timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
-        df.columns = df.columns.str.strip()
     except Exception as e:
         return f"<h1>Sync Error: {e}</h1>"
 
-    all_games = []
+    all_games, final_sidebar = [], []
     for _, row in df.iterrows():
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
-        if not a or a.lower() == 'nan': continue
+        if not a or a.lower() == 'nan' or normalize(a) in postponed_teams: continue
 
+        # --- THE PROJECTION MATH ---
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away'), 182), clean_val(row.get('Rank Home'), 182)
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
-        ap = 71.0 + ((182 - ra) / 18.0) + (((pa - 72) + (72 - pgh)) * 0.4)
-        hp = 71.0 + ((182 - rh) / 18.0) + (((ph - 72) + (72 - pga)) * 0.4) + 3.2
-        model_line = round(ap - hp, 1)
+        rank_gap = (ra - rh) * 0.18
+        our_margin = -3.8 - rank_gap
+        edge_raw = h_spr - our_margin
 
-        edge_to_away = model_line - (-h_spr)
-        pick, pick_spr, edge = (a, -h_spr, abs(edge_to_away)) if edge_to_away > 0 else (h, h_spr, abs(edge_to_away))
+        pick, p_spr = (h, h_spr) if edge_raw > 0 else (a, -h_spr)
+        edge = abs(edge_raw)
 
-        all_games.append({
+        # Calculate Expected Scores
+        total = (pa + pgh + ph + pga) / 2
+        hp = (total / 2) + (abs(our_margin) / 2)
+        ap = (total / 2) - (abs(our_margin) / 2)
+        if our_margin > 0: hp, ap = ap, hp
+
+        game_obj = {
             'away': a, 'home': h, 'a_p': round(ap, 1), 'h_p': round(hp, 1),
-            'edge': round(edge, 1), 'pick': pick.upper(), 'pick_spr': pick_spr,
-            'instruction': f"TAKE {pick} {'+' if pick_spr > 0 else ''}{pick_spr}",
-            'conf': "elite" if edge >= 6 else "solid" if edge >= 3 else "low",
+            'edge': round(edge, 1), 'pick': pick.upper(), 'pick_spr': p_spr,
+            'instruction': f"TAKE {pick} {'+' if p_spr > 0 else ''}{p_spr}",
+            'conf': "elite" if edge >= 8 else "solid" if edge >= 4 else "low",
             'a_logo': str(row.get('Away Logo', '')), 'h_logo': str(row.get('Home Logo', '')),
-            'a_rank': int(ra), 'h_rank': int(rh), 'a_ppg': pa, 'a_ppga': pga, 'h_ppg': ph, 'h_ppga': pgh,
-            'time': row.get('Game Time', 'TBD')
-        })
+            'time': row.get('Game Time', 'TBD'), 'a_rank': int(ra), 'h_rank': int(rh)
+        }
+        all_games.append(game_obj)
 
-    # 2. ESPN LIVE SCORES
-    live_scores = []
+        # Build Sidebar
+        s_entry = {
+            "id": "0", "status": game_obj['time'], "is_final": False,
+            "away_name": a[:12].upper(), "home_name": h[:12].upper(),
+            "score_away": 0, "score_home": 0, "away_logo": game_obj['a_logo'],
+            "home_logo": game_obj['h_logo'], "our_pick": pick.upper(), "our_result": ""
+        }
+        if normalize(a) in live_data_map:
+            lv = live_data_map[normalize(a)]
+            res_label = ""
+            if lv['state'] == "post":
+                margin = lv['score_home'] - lv['score_away']
+                is_win = (margin + h_spr) > 0 if pick.upper() == h.upper() else ((-margin) - h_spr) > 0
+                res_label = "WIN" if is_win else "LOSS"
+            s_entry.update({"id": lv['id'], "status": lv['status'], "is_final": (lv['state'] == "post"),
+                            "score_away": lv['score_away'], "score_home": lv['score_home'],
+                            "away_logo": lv['away_logo'], "home_logo": lv['home_logo'], "our_result": res_label})
+        final_sidebar.append(s_entry)
+
+    # 3. STATS & SEO
+    wins, losses, pct = 0, 0, 0
     try:
-        espn = requests.get(
-            "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
-            timeout=5).json()
-        for event in espn.get('events', []):
-            comp = event['competitions'][0]
-            teams = comp['competitors']
-            away_e = next(t for t in teams if t['homeAway'] == 'away')
-            home_e = next(t for t in teams if t['homeAway'] == 'home')
-            e_names = [away_e['team']['displayName'].upper(), home_e['team']['displayName'].upper()]
-
-            for p in all_games:
-                if normalize(p['away']) in [normalize(n) for n in e_names] or normalize(p['home']) in [normalize(n) for
-                                                                                                       n in e_names]:
-                    status = event['status']['type']['description']
-                    res_label = ""
-                    if "Final" in status:
-                        winner = next(t for t in teams if t.get('winner') == True)
-                        res_label = "WIN" if normalize(p['pick']) in normalize(
-                            winner['team']['displayName']) else "LOSS"
-
-                    live_scores.append({
-                        "id": str(event['id']), "status": status, "is_final": "Final" in status,
-                        "score": f"{away_e['score']} - {home_e['score']}", "our_result": res_label,
-                        "away_name": away_e['team']['displayName'], "away_logo": away_e['team']['logo'],
-                        "home_name": home_e['team']['displayName'], "home_logo": home_e['team']['logo'],
-                        "my_pick": p['pick']
-                    })
+        h_df = pd.read_csv(io.StringIO(requests.get(STATS_URL).content.decode('utf-8')))
+        valid = h_df[~h_df['Result'].str.contains('POSTPONED|CANCELED', na=False, case=False)]
+        wins = len(valid[valid['Result'].str.contains('WIN', na=False, case=False)])
+        losses = len(valid[valid['Result'].str.contains('LOSS', na=False, case=False)])
+        pct = round((wins / (wins + losses) * 100), 1) if (wins + losses) > 0 else 0
     except:
         pass
 
-    # 3. ARCHIVE LOGIC (THE STATS FIX)
-    wins, losses, pct = 0, 0, 0
-    if G_CLIENT:
-        try:
-            workbook = G_CLIENT.open_by_key(SHEET_ID)
-            try:
-                archive_sheet = workbook.worksheet("Archive")
-            except:
-                archive_sheet = workbook.get_worksheet(0)
+    top = max(all_games, key=lambda x: x['edge']) if all_games else None
+    seo = {"title": "Edge Engine Pro", "desc": "CBB Model"}
+    if top:
+        seo["title"] = f"{top['away']} vs {top['home']} (+{top['edge']} Edge)"
+        seo["desc"] = f"Prediction: {top['away']} {top['a_p']} - {top['home']} {top['h_p']}. Rec: {top['instruction']}."
 
-            # Sync new results
-            existing_ids = [str(i).strip() for i in archive_sheet.col_values(16)]
-            for s in [x for x in live_scores if x['is_final']]:
-                if str(s['id']) not in existing_ids:
-                    match = next((g for g in all_games if
-                                  normalize(g['away']) == normalize(s['away_name']) or normalize(
-                                      g['home']) == normalize(s['home_name'])), None)
-                    if match:
-                        archive_sheet.append_row([
-                            datetime.now().strftime('%m/%d/%Y'), f"{match['away']} @ {match['home']}",
-                            s['our_result'], s['score'], match['pick'], match['pick_spr'],
-                            match['a_p'], match['h_p'], match['edge'], match['a_ppg'], match['a_ppga'],
-                            match['h_ppg'], match['h_ppga'], match['a_rank'], match['h_rank'], str(s['id'])
-                        ])
-
-            # Tally Stats
-            all_rows = archive_sheet.get_all_values()
-            if len(all_rows) > 1:
-                headers = [h.strip().upper() for h in all_rows[0]]
-                res_idx = headers.index("RESULT") if "RESULT" in headers else 2
-                for row in all_rows[1:]:
-                    if len(row) > res_idx:
-                        val = str(row[res_idx]).strip().upper()
-                        if "WIN" in val:
-                            wins += 1
-                        elif "LOSS" in val:
-                            losses += 1
-                total = wins + losses
-                pct = round((wins / total * 100), 1) if total > 0 else 0
-        except Exception as e:
-            print(f"Archive Error: {e}")
-
-    return render_template('index.html', games=all_games, live_scores=live_scores,
-                           stats={"W": wins, "L": losses, "PCT": pct})
+    return render_template('index.html', games=all_games, live_scores=final_sidebar,
+                           stats={"W": wins, "L": losses, "PCT": pct}, seo=seo)
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=8080)
