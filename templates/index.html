@@ -16,113 +16,40 @@
 
     <style>
         :root {
-            --bg: #0d1117;
-            --card: #161b22;
-            --border: #30363d;
-            --accent: #58a6ff;
-            --text: #f0f6fc;
-            --success: #238636;
-            --danger: #da3633;
+            --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff;
+            --text: #f0f6fc; --success: #238636; --danger: #da3633; --muted: #8b949e;
         }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
 
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            overflow-x: hidden;
-        }
-
-        /* Sidebars */
-        .slider {
-            height: 100%;
-            width: 0;
-            position: fixed;
-            top: 0;
-            background: var(--card);
-            transition: 0.3s ease;
-            z-index: 2000;
-            overflow-y: auto;
-            box-shadow: 0 0 40px #000;
-        }
+        /* Sidebar Sliders */
+        .slider { height: 100%; width: 0; position: fixed; top: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; box-shadow: 0 0 40px #000; }
         #stats-sidebar { left: 0; border-right: 1px solid var(--border); }
         #live-sidebar { right: 0; border-left: 1px solid var(--border); }
 
-        /* Card Flip Logic */
+        /* Card Setup */
         .game-container { perspective: 1200px; height: 380px; margin-bottom: 20px; cursor: pointer; }
-        .card-inner {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            transition: transform 0.6s;
-            transform-style: preserve-3d;
-        }
+        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
-
-        .card-front, .card-back {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            backface-visibility: hidden;
-            border-radius: 16px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
+        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
         .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
 
         .t-logo { width: 60px; height: 60px; object-fit: contain; }
-        .t-logo-sm { width: 24px; height: 24px; object-fit: contain; }
-        .score-proj { font-size: 2.2rem; font-weight: 800; }
+        .t-logo-sm { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; }
+        .score-proj { font-size: 2.2rem; font-weight: 800; color: var(--muted); }
 
-        .live-card {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 12px;
-            display: block;
-            text-decoration: none;
-            color: inherit;
-            transition: 0.2s;
-        }
-        .live-card:hover { border-color: var(--accent); }
+        .live-score-container { background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px; margin: 10px auto; display: inline-block; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
+
+        .live-card { background: #0d1117; border: 1px solid var(--border); border-radius: 12px; padding: 15px; margin-bottom: 12px; display: block; text-decoration: none; color: inherit; transition: 0.2s; }
+        .live-card:hover { border-color: var(--accent); background: #161b22; }
         .live-pts { font-family: monospace; font-size: 1.2rem; font-weight: 900; color: var(--accent); }
 
-        .fab {
-            position: fixed;
-            bottom: 25px;
-            z-index: 3000;
-            width: 65px;
-            height: 65px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 900;
-            cursor: pointer;
-            border: 2px solid var(--border);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
-        }
+        .fab { position: fixed; bottom: 25px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; cursor: pointer; border: 2px solid var(--border); box-shadow: 0 10px 20px #000; }
         .fab-stats { left: 20px; background: linear-gradient(135deg, #238636, #144620); color: white; }
         .fab-live { right: 20px; background: linear-gradient(135deg, #da3633, #8b0000); color: white; }
 
-        .pulse {
-            width: 8px;
-            height: 8px;
-            background: #ff3e3e;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 5px;
-            animation: pulse-red 2s infinite;
-        }
-        @keyframes pulse-red {
-            0% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 62, 62, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0); }
-        }
+        .pulse { width: 8px; height: 8px; background: #ff3e3e; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-red 2s infinite; }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 62, 62, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0); } }
     </style>
 </head>
 <body>
@@ -130,7 +57,7 @@
     <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
             <span class="fw-bold">EDGE ENGINE <span class="text-info">PRO</span></span>
-            <span id="sync-status" class="badge bg-dark border border-secondary text-secondary">LIVE SYNC</span>
+            <span id="sync-status" class="badge bg-dark border border-secondary text-secondary">TODAY'S BOARD</span>
         </div>
     </nav>
 
@@ -142,29 +69,23 @@
                     <div class="card-inner shadow-lg">
                         <div class="card-front">
                             <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                                <span class="fw-bold text-info">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</span>
+                                <span class="fw-bold text-info">{% if g.is_locked %}🔒 {% endif %}PICK: {{ g.Pick }} {{ g.Pick_Spread }}</span>
                                 {% if g.is_live %}<span class="badge bg-danger">LIVE</span>{% endif %}
                             </div>
-                            <div class="d-flex justify-content-around align-items-center text-center p-4">
-                                <div>
-                                    <img src="{{ g.a_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'">
-                                    <div class="score-proj">{{ g.Proj_Away }}</div>
+                            <div class="text-center p-3">
+                                <div class="d-flex justify-content-around align-items-center mb-2">
+                                    <div><img src="{{ g.a_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'"><div class="score-proj">{{ g.Proj_Away }}</div></div>
+                                    <div class="opacity-25 fw-bold">VS</div>
+                                    <div><img src="{{ g.h_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'"><div class="score-proj">{{ g.Proj_Home }}</div></div>
                                 </div>
-                                <div class="opacity-25 fw-bold">VS</div>
-                                <div>
-                                    <img src="{{ g.h_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'">
-                                    <div class="score-proj">{{ g.Proj_Home }}</div>
+                                <div class="live-score-container">
+                                    <small class="text-secondary d-block" style="font-size: 0.7rem;">LIVE SCORE</small>
+                                    <div class="live-score-val main-score-display">{{ g.Final_Score }}</div>
                                 </div>
                             </div>
                             <div class="row g-0 border-top border-secondary text-center p-3 mt-auto">
-                                <div class="col-6 border-end border-secondary">
-                                    <small class="text-secondary d-block">STATUS</small>
-                                    <b class="game-status">{% if g.is_live %}<span class="pulse"></span>{% endif %}{{ g.status }}</b>
-                                </div>
-                                <div class="col-6">
-                                    <small class="text-secondary d-block">EDGE</small>
-                                    <b class="text-warning">+{{ g.Edge }}</b>
-                                </div>
+                                <div class="col-6 border-end border-secondary"><small class="text-secondary d-block">STATUS</small><b class="main-status-display">{% if g.is_live %}<span class="pulse"></span>{% endif %}{{ g.status }}</b></div>
+                                <div class="col-6"><small class="text-secondary d-block">EDGE</small><b class="text-warning">+{{ g.Edge }}</b></div>
                             </div>
                         </div>
                         <div class="card-back">
@@ -172,65 +93,46 @@
                             <div class="d-flex justify-content-between mt-3"><span>Away Rank</span><b>#{{ g.a_rank }}</b></div>
                             <div class="d-flex justify-content-between mt-2"><span>Home Rank</span><b>#{{ g.h_rank }}</b></div>
                             <div class="mt-auto p-3 bg-dark rounded border border-secondary text-center">
-                                <small class="text-secondary">CURRENT SCORE</small>
-                                <div class="h4 fw-bold game-score">{{ g.Final_Score }}</div>
-                                <div class="result-badge fw-bold mt-1 text-{{ 'success' if 'WIN' in g.Result else 'danger' if 'LOSS' in g.Result else 'secondary' }}">
-                                    {{ g.Result }}
-                                </div>
+                                <small class="text-secondary">ARCHIVED SCORE</small>
+                                <div class="h4 fw-bold back-score-display">{{ g.Final_Score }}</div>
+                                <div class="fw-bold mt-1 text-{{ 'success' if 'WIN' in g.Result else 'danger' if 'LOSS' in g.Result else 'secondary' }}">{{ g.Result if g.Result else 'PENDING' }}</div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
+            {% else %}
+            <div class="col-12 text-center py-5">
+                <h3 class="text-secondary">No games scheduled for today.</h3>
             </div>
             {% endfor %}
         </div>
     </div>
 
     <div id="stats-sidebar" class="slider">
-        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5>MODEL PERFORMANCE</h5>
-            <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
-        </div>
+        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center"><h5>MODEL PERFORMANCE</h5><button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button></div>
         <div class="p-4 text-center">
-            <h1 class="display-3 fw-bold text-info">{{ stats.PCT }}%</h1>
-            <p class="text-secondary">LIFETIME ACCURACY</p>
+            <h1 class="display-3 fw-bold text-info">{{ stats.PCT }}%</h1><p class="text-secondary">LIFETIME ACCURACY</p>
             <div class="row g-2 mt-4">
-                <div class="col-6 bg-dark p-3 rounded border border-secondary">
-                    <h2 class="text-success">{{ stats.W }}</h2>
-                    <small>WINS</small>
-                </div>
-                <div class="col-6 bg-dark p-3 rounded border border-secondary">
-                    <h2 class="text-danger">{{ stats.L }}</h2>
-                    <small>LOSSES</small>
-                </div>
+                <div class="col-6 bg-dark p-3 rounded border border-secondary"><h2 class="text-success">{{ stats.W }}</h2><small>WINS</small></div>
+                <div class="col-6 bg-dark p-3 rounded border border-secondary"><h2 class="text-danger">{{ stats.L }}</h2><small>LOSSES</small></div>
             </div>
         </div>
     </div>
 
     <div id="live-sidebar" class="slider">
-        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5>LIVE TRACKER</h5>
-            <button class="btn-close btn-close-white" onclick="toggleS('live-sidebar')"></button>
-        </div>
+        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center"><h5>TODAY'S TRACKER</h5><button class="btn-close btn-close-white" onclick="toggleS('live-sidebar')"></button></div>
         <div class="p-3">
             {% for g in games %}
             <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="live-card" data-matchup="{{ g.Matchup }}">
-                <div class="d-flex justify-content-between mb-1">
-                    <small class="text-secondary game-status">{{ g.status }}</small>
+                <div class="d-flex justify-content-between mb-2"><small class="text-secondary side-status">{{ g.status }}</small><small class="text-info" style="font-size: 0.7rem;">ESPN →</small></div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <div class="d-flex align-items-center gap-2"><img src="{{ g.a_logo }}" class="t-logo-sm side-a-logo" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[0] }}</span></div>
+                    <div class="live-pts side-a-pts">{{ g.Final_Score.split('-')[0] }}</div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center gap-2">
-                        <img src="{{ g.a_logo }}" class="t-logo-sm" onerror="this.src='https://via.placeholder.com/24'">
-                        <b>{{ g.Matchup.split(' @ ')[0] }}</b>
-                    </div>
-                    <div class="live-pts away-pts">{{ g.Final_Score.split('-')[0] }}</div>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mt-1">
-                    <div class="d-flex align-items-center gap-2">
-                        <img src="{{ g.h_logo }}" class="t-logo-sm" onerror="this.src='https://via.placeholder.com/24'">
-                        <b>{{ g.Matchup.split(' @ ')[1] }}</b>
-                    </div>
-                    <div class="live-pts home-pts">{{ g.Final_Score.split('-')[1] }}</div>
+                    <div class="d-flex align-items-center gap-2"><img src="{{ g.h_logo }}" class="t-logo-sm side-h-logo" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[1] }}</span></div>
+                    <div class="live-pts side-h-pts">{{ g.Final_Score.split('-')[1] }}</div>
                 </div>
             </a>
             {% endfor %}
@@ -241,12 +143,7 @@
     <button class="fab fab-live" onclick="toggleS('live-sidebar')">LIVE</button>
 
     <script>
-        function toggleS(id) {
-            const s = document.getElementById(id);
-            const w = window.innerWidth < 600 ? '100%' : '380px';
-            s.style.width = (s.style.width === w) ? '0' : w;
-        }
-
+        function toggleS(id) { const s = document.getElementById(id); const w = window.innerWidth < 600 ? '100%' : '380px'; s.style.width = (s.style.width === w) ? '0' : w; }
         async function updateData() {
             try {
                 const res = await fetch('/api/updates');
@@ -254,19 +151,20 @@
                 data.forEach(g => {
                     const card = document.querySelector(`.game-container[data-matchup="${g.matchup}"]`);
                     if(card) {
-                        card.querySelector('.game-status').innerHTML = (g.is_live ? '<span class="pulse"></span>' : '') + g.status;
-                        card.querySelector('.game-score').innerText = g.score;
+                        card.querySelector('.main-score-display').innerText = g.score;
+                        card.querySelector('.back-score-display').innerText = g.score;
+                        card.querySelector('.main-status-display').innerHTML = (g.is_live ? '<span class="pulse"></span>' : '') + g.status;
                     }
-                    const live = document.querySelector(`.live-card[data-matchup="${g.matchup}"]`);
-                    if(live) {
-                        live.querySelector('.game-status').innerText = g.status;
+                    const side = document.querySelector(`#live-sidebar [data-matchup="${g.matchup}"]`);
+                    if(side) {
+                        side.querySelector('.side-status').innerText = g.status;
                         const s = g.score.split('-');
-                        live.querySelector('.away-pts').innerText = s[0];
-                        live.querySelector('.home-pts').innerText = s[1];
+                        side.querySelector('.side-a-pts').innerText = s[0];
+                        side.querySelector('.side-h-pts').innerText = s[1];
                     }
                 });
                 document.getElementById('sync-status').innerText = "UPDATED: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            } catch(e) { console.log(e); }
+            } catch(e) {}
         }
         setInterval(updateData, 30000);
     </script>
