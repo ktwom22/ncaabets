@@ -18,6 +18,7 @@
         :root {
             --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff;
             --text: #f0f6fc; --success: #238636; --danger: #da3633; --muted: #8b949e;
+            --must: #ffcc00; --good: #00ffcc; --fade: #888;
         }
         body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
 
@@ -27,22 +28,36 @@
         #live-sidebar { right: 0; border-left: 1px solid var(--border); }
 
         /* Card Setup */
-        .game-container { perspective: 1200px; height: 380px; margin-bottom: 20px; cursor: pointer; }
+        .game-container { perspective: 1200px; height: 420px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
         .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
 
+        /* Over/Under Status Badges */
+        .status-tag {
+            padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem;
+            position: relative; cursor: help; text-transform: uppercase; display: inline-block;
+        }
+        .status-tag[data-type="MUST BET"] { background: var(--must); color: #000; }
+        .status-tag[data-type="GOOD BET"] { background: var(--good); color: #000; }
+        .status-tag[data-type="FADE"] { background: var(--fade); color: #fff; }
+
+        /* Tooltip Logic */
+        .status-tag .tooltip-text {
+            visibility: hidden; width: 180px; background: #333; color: #fff;
+            text-align: center; border-radius: 8px; padding: 10px; position: absolute;
+            z-index: 100; bottom: 130%; left: 50%; margin-left: -90px; opacity: 0;
+            transition: opacity 0.3s; border: 1px solid #555; font-size: 0.7rem; font-weight: normal;
+        }
+        .status-tag:hover .tooltip-text { visibility: visible; opacity: 1; }
+
         .t-logo { width: 60px; height: 60px; object-fit: contain; }
         .t-logo-sm { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; }
         .score-proj { font-size: 2.2rem; font-weight: 800; color: var(--muted); }
 
-        .live-score-container { background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px; margin: 10px auto; display: inline-block; }
+        .live-score-container { background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px; margin: 5px auto; display: inline-block; }
         .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
-
-        .live-card { background: #0d1117; border: 1px solid var(--border); border-radius: 12px; padding: 15px; margin-bottom: 12px; display: block; text-decoration: none; color: inherit; transition: 0.2s; }
-        .live-card:hover { border-color: var(--accent); background: #161b22; }
-        .live-pts { font-family: monospace; font-size: 1.2rem; font-weight: 900; color: var(--accent); }
 
         .fab { position: fixed; bottom: 25px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; cursor: pointer; border: 2px solid var(--border); box-shadow: 0 10px 20px #000; }
         .fab-stats { left: 20px; background: linear-gradient(135deg, #238636, #144620); color: white; }
@@ -72,6 +87,7 @@
                                 <span class="fw-bold text-info">{% if g.is_locked %}🔒 {% endif %}PICK: {{ g.Pick }} {{ g.Pick_Spread }}</span>
                                 {% if g.is_live %}<span class="badge bg-danger">LIVE</span>{% endif %}
                             </div>
+
                             <div class="text-center p-3">
                                 <div class="d-flex justify-content-around align-items-center mb-2">
                                     <div><img src="{{ g.a_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'"><div class="score-proj">{{ g.Proj_Away }}</div></div>
@@ -79,22 +95,32 @@
                                     <div><img src="{{ g.h_logo }}" class="t-logo" onerror="this.src='https://via.placeholder.com/60'"><div class="score-proj">{{ g.Proj_Home }}</div></div>
                                 </div>
                                 <div class="live-score-container">
-                                    <small class="text-secondary d-block" style="font-size: 0.7rem;">LIVE SCORE</small>
-                                    <div class="live-score-val main-score-display">{{ g.Final_Score }}</div>
+                                    <small class="text-secondary d-block" style="font-size: 0.6rem;">LIVE SCORE</small>
+                                    <div class="live-score-val main-score-display">{{ g.Final_Score if g.Final_Score else '0-0' }}</div>
                                 </div>
                             </div>
+
+                            <div class="px-3 pb-3 text-center">
+                                <div class="status-tag" data-type="{{ g.OU_Status }}">
+                                    {{ g.OU_Status }}
+                                    <span class="tooltip-text">{{ g.OU_Tip }}</span>
+                                </div>
+                                <div class="mt-1"><small class="text-muted">LINE: {{ g.OU_Pick }} | PROJ: {{ g.Proj_Total }}</small></div>
+                            </div>
+
                             <div class="row g-0 border-top border-secondary text-center p-3 mt-auto">
                                 <div class="col-6 border-end border-secondary"><small class="text-secondary d-block">STATUS</small><b class="main-status-display">{% if g.is_live %}<span class="pulse"></span>{% endif %}{{ g.status }}</b></div>
                                 <div class="col-6"><small class="text-secondary d-block">EDGE</small><b class="text-warning">+{{ g.Edge }}</b></div>
                             </div>
                         </div>
+
                         <div class="card-back">
                             <h6 class="text-info border-bottom border-secondary pb-2">DATA SNAPSHOT</h6>
                             <div class="d-flex justify-content-between mt-3"><span>Away Rank</span><b>#{{ g.a_rank }}</b></div>
                             <div class="d-flex justify-content-between mt-2"><span>Home Rank</span><b>#{{ g.h_rank }}</b></div>
                             <div class="mt-auto p-3 bg-dark rounded border border-secondary text-center">
                                 <small class="text-secondary">ARCHIVED SCORE</small>
-                                <div class="h4 fw-bold back-score-display">{{ g.Final_Score }}</div>
+                                <div class="h4 fw-bold back-score-display">{{ g.Final_Score if g.Final_Score else '0-0' }}</div>
                                 <div class="fw-bold mt-1 text-{{ 'success' if 'WIN' in g.Result else 'danger' if 'LOSS' in g.Result else 'secondary' }}">{{ g.Result if g.Result else 'PENDING' }}</div>
                             </div>
                         </div>
@@ -124,15 +150,15 @@
         <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center"><h5>TODAY'S TRACKER</h5><button class="btn-close btn-close-white" onclick="toggleS('live-sidebar')"></button></div>
         <div class="p-3">
             {% for g in games %}
-            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="live-card" data-matchup="{{ g.Matchup }}">
+            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="live-card">
                 <div class="d-flex justify-content-between mb-2"><small class="text-secondary side-status">{{ g.status }}</small><small class="text-info" style="font-size: 0.7rem;">ESPN →</small></div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <div class="d-flex align-items-center gap-2"><img src="{{ g.a_logo }}" class="t-logo-sm side-a-logo" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[0] }}</span></div>
-                    <div class="live-pts side-a-pts">{{ g.Final_Score.split('-')[0] }}</div>
+                    <div class="d-flex align-items-center gap-2"><img src="{{ g.a_logo }}" class="t-logo-sm" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[0] }}</span></div>
+                    <div class="live-pts">{{ g.Final_Score.split('-')[0] if g.Final_Score else '0' }}</div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center gap-2"><img src="{{ g.h_logo }}" class="t-logo-sm side-h-logo" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[1] }}</span></div>
-                    <div class="live-pts side-h-pts">{{ g.Final_Score.split('-')[1] }}</div>
+                    <div class="d-flex align-items-center gap-2"><img src="{{ g.h_logo }}" class="t-logo-sm" onerror="this.src='https://via.placeholder.com/24'"><span class="fw-bold">{{ g.Matchup.split(' @ ')[1] }}</span></div>
+                    <div class="live-pts">{{ g.Final_Score.split('-')[1] if g.Final_Score else '0' }}</div>
                 </div>
             </a>
             {% endfor %}
@@ -154,13 +180,6 @@
                         card.querySelector('.main-score-display').innerText = g.score;
                         card.querySelector('.back-score-display').innerText = g.score;
                         card.querySelector('.main-status-display').innerHTML = (g.is_live ? '<span class="pulse"></span>' : '') + g.status;
-                    }
-                    const side = document.querySelector(`#live-sidebar [data-matchup="${g.matchup}"]`);
-                    if(side) {
-                        side.querySelector('.side-status').innerText = g.status;
-                        const s = g.score.split('-');
-                        side.querySelector('.side-a-pts').innerText = s[0];
-                        side.querySelector('.side-h-pts').innerText = s[1];
                     }
                 });
                 document.getElementById('sync-status').innerText = "UPDATED: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
