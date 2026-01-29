@@ -41,10 +41,9 @@ def clean_val(val, default=0.0):
 
 @app.route('/')
 def index():
-    # Force EST for Date Matching
     tz = pytz.timezone('US/Eastern')
     now_tz = datetime.now(tz)
-    today_m_d = f"{now_tz.month}/{now_tz.day}"  # "1/29"
+    today_m_d = f"{now_tz.month}/{now_tz.day}"
 
     client = get_gspread_client()
     if not client:
@@ -55,11 +54,21 @@ def index():
 
     try:
         sheet = client.open_by_key(SHEET_ID)
-        # Pull Data from First Tab
-        main_data = sheet.get_worksheet(0).get_all_records()
-        df = pd.DataFrame(main_data)
 
-        # Pull Stats from Archive Tab
+        # --- NEW CLEANER DATA FETCH ---
+        # Get all values as a list of lists instead of a dictionary
+        raw_rows = sheet.get_worksheet(0).get_all_values()
+        if not raw_rows:
+            return "<h1>Sheet is Empty</h1>"
+
+        # First row is headers. Clean them and handle duplicates/blanks.
+        headers = [str(h).strip() for h in raw_rows[0]]
+
+        # Convert to DataFrame, then drop any columns that have no name
+        df = pd.DataFrame(raw_rows[1:], columns=headers)
+        df = df.loc[:, df.columns != '']  # This removes the duplicate blank columns!
+
+        # --- ARCHIVE STATS ---
         try:
             archive_data = sheet.worksheet("Archive").get_all_records()
             adf = pd.DataFrame(archive_data)
@@ -71,19 +80,17 @@ def index():
 
         for _, row in df.iterrows():
             g_time = str(row.get('Game Time', ''))
-            # LOOSE MATCH: If "1/29" is anywhere in the string
             if today_m_d not in g_time:
                 continue
 
             a = str(row.get('Away Team', 'Unknown'))
             h = str(row.get('Home Team', 'Unknown'))
 
-            # Simple Math Engine for the UI
             h_spr = clean_val(row.get('FD Spread'))
             v_tot = clean_val(row.get('FD Total'))
-            ra, rh = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
+            ra = clean_val(row.get('Rank Away'))
+            rh = clean_val(row.get('Rank Home'))
 
-            # This ensures the card actually populates
             all_games.append({
                 'Matchup': f"{a} @ {h}",
                 'status': g_time.split(',')[-1] if ',' in g_time else g_time,
@@ -92,7 +99,7 @@ def index():
                 'Edge': round(abs(ra - rh) * 0.05, 1),
                 'OU_Status': "GOOD BET" if v_tot > 140 else "FADE",
                 'OU_Pick': f"O {v_tot}",
-                'OU_Tip': "Vegas line looks vulnerable.",
+                'OU_Tip': "Line suggests high tempo.",
                 'Proj_Away': 75, 'Proj_Home': 72, 'Proj_Total': 147,
                 'Final_Score': "0-0",
                 'a_rank': int(ra), 'h_rank': int(rh),
@@ -100,13 +107,12 @@ def index():
             })
 
     except Exception as e:
-        return f"<h1>Sheet Error: {e}</h1><p>Make sure you shared the sheet with the client_email in your JSON.</p>"
+        return f"<h1>System Error: {e}</h1>"
 
     return render_template('index.html',
                            games=all_games,
                            stats={"W": wins, "L": losses, "PCT": pct},
                            seo={"title": "Edge Engine Pro"})
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
