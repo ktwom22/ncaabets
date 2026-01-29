@@ -1,5 +1,5 @@
 import os, io, requests, pandas as pd, gspread, json, time
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template
 from datetime import datetime
 import pytz
 from oauth2client.service_account import ServiceAccountCredentials
@@ -17,19 +17,16 @@ try:
     creds_json = os.environ.get('GOOGLE_CREDS')
     if creds_json:
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(creds_json), scope)
-        gc = gspread.authorize(creds)
-        archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive")
+        archive_sheet = gspread.authorize(creds).open_by_key(SHEET_ID).worksheet("Archive")
     else:
         archive_sheet = None
-except Exception as e:
-    print(f"CRITICAL AUTH ERROR: {e}")
+except:
     archive_sheet = None
 
 
-# --- HELPERS ---
 def clean_id(val):
     try:
-        return str(int(float(val))) if not pd.isna(val) and str(val).strip() != "" else "0"
+        return str(int(float(val))) if not pd.isna(val) else "0"
     except:
         return str(val).strip()
 
@@ -37,15 +34,14 @@ def clean_id(val):
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper()
-    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS"]:
+    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "PALADINS", "MOCS", "TERRIERS"]:
         name = name.replace(r, "")
     return name.strip()
 
 
 def clean_val(val, default=0.0):
     try:
-        v = str(val).replace('$', '').replace('%', '').strip()
-        return float(v) if v not in ['---', '', 'nan'] else default
+        return float(str(val).replace('$', '').strip())
     except:
         return default
 
@@ -75,55 +71,47 @@ def get_live_data():
 def index():
     tz = pytz.timezone('US/Eastern')
     now_tz = datetime.now(tz)
+    today_str = f"{now_tz.month}/{now_tz.day}"  # "1/29"
+    today_full = now_tz.strftime("%m/%d/%Y")
 
-    # LOOSE DATE MATCHING: Finds "1/29", "01/29", "1/29/26", etc.
-    today_m_d = f"{now_tz.month}/{now_tz.day}"
-    today_pad = f"{now_tz.strftime('%m/%d')}"
-    today_full_str = now_tz.strftime("%m/%d/%Y")
-
-    # 1. ARCHIVE STATS
+    # 1. ARCHIVE
     wins, losses, pct, archive_ids, adf = 0, 0, 0.0, [], pd.DataFrame()
     if archive_sheet:
         try:
-            recs = archive_sheet.get_all_records()
-            if recs:
-                adf = pd.DataFrame(recs)
-                wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
-                losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
-                pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
-                archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
+            adf = pd.DataFrame(archive_sheet.get_all_records())
+            wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
+            losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
+            pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
+            archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
         except:
             pass
 
     # 2. DATA LOAD
     live_map = get_live_data()
     try:
-        # We use a header to make Google think we are a browser
-        response = requests.get(SHEET_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        df = pd.read_csv(io.StringIO(response.text))
+        df = pd.read_csv(SHEET_URL)
         df.columns = [str(c).strip() for c in df.columns]
-    except Exception as e:
-        print(f"SHEET READ ERROR: {e}")
+    except:
         df = pd.DataFrame()
 
     all_games = []
     for _, row in df.iterrows():
         g_time = str(row.get('Game Time', ''))
-
-        # Check if today's date is anywhere in that cell
-        if today_m_d not in g_time and today_pad not in g_time:
-            continue
+        # Updated Logic: Partial Match for "1/29"
+        if today_str not in g_time: continue
 
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0})
         espn_id = clean_id(ld.get('id'))
 
-        # PROJECTIONS
-        h_spr, v_tot = clean_val(row.get('FD Spread')), clean_val(row.get('Total'))
-        ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
-        pa, pga, ph, pgh = clean_val(row.get('PPG Away')), clean_val(row.get('PPGA Away')), clean_val(
-            row.get('PPG Home')), clean_val(row.get('PPGA Home'))
+        # PROJECTIONS (Using your pasted column names)
+        h_spr = clean_val(row.get('FD Spread'))
+        v_tot = clean_val(row.get('FD Total'))  # Matches your "FD Total" header
+        ra, rh = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
+        pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
+        pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
+        # Math Engine
         our_margin = -3.8 - max(min((ra - rh) * 0.18, 28), -28)
         tp = (pa + pgh + ph + pga) / 2
         hp, ap = (tp / 2) + (abs(our_margin) / 2), (tp / 2) - (abs(our_margin) / 2)
@@ -141,7 +129,7 @@ def index():
         else:
             conf, tip = "FADE", "Vegas is spot on."
 
-        # Pick Locking
+        # Locking
         is_locked = espn_id in archive_ids
         if is_locked and not adf.empty:
             try:
@@ -152,35 +140,28 @@ def index():
         else:
             pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
 
-        # Backfill Engine
-        final_score_str = f"{ld['s_away']}-{ld['s_home']}"
-        res_label = "PENDING"
-        if archive_sheet and espn_id != "0" and not is_locked:
-            if ld['state'] in ['in', 'post']:
-                res_label = "LIVE"
-                if ld['state'] == 'post':
-                    diff = ld['s_home'] - ld['s_away']
-                    res_label = "WIN" if ((diff + h_spr > 0) if pick == h else ((-diff) - h_spr > 0)) else "LOSS"
-                archive_sheet.append_row(
-                    [today_full_str, f"{a} @ {h}", res_label, final_score_str, str(pick), p_spr, 0, 0, 0, pa, pga, ph,
-                     pgh, int(ra), int(rh), espn_id])
-                is_locked = True
-                time.sleep(1)
+        final_score = f"{ld['s_away']}-{ld['s_home']}"
+
+        # Save to Archive if Final
+        if archive_sheet and espn_id != "0" and not is_locked and ld['state'] == 'post':
+            diff = ld['s_home'] - ld['s_away']
+            res = "WIN" if ((diff + h_spr > 0) if pick == h else ((-diff) - h_spr > 0)) else "LOSS"
+            archive_sheet.append_row(
+                [today_full, f"{a} @ {h}", res, final_score, str(pick), p_spr, 0, 0, 0, pa, pga, ph, pgh, int(ra),
+                 int(rh), espn_id])
+            is_locked = True
 
         all_games.append({
             'Matchup': f"{a} @ {h}", 'status': ld['status'], 'is_live': ld['state'] == 'in',
             'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Edge': round(min(abs(h_spr - our_margin), 15.0), 1),
             'OU_Status': conf, 'OU_Pick': f"{ou_dir} {v_tot}", 'OU_Tip': tip,
             'Proj_Away': round(ap, 1), 'Proj_Home': round(hp, 1), 'Proj_Total': round(ap + hp, 1),
-            'Final_Score': final_score_str, 'Result': res_label, 'is_locked': is_locked,
-            'a_rank': int(ra), 'h_rank': int(rh), 'ESPN_ID': espn_id,
-            'a_logo': ld.get('a_logo') or str(row.get('Away Logo', '')),
-            'h_logo': ld.get('h_logo') or str(row.get('Home Logo', ''))
+            'Final_Score': final_score, 'is_locked': is_locked, 'ESPN_ID': espn_id,
+            'a_rank': int(ra), 'h_rank': int(rh),
+            'a_logo': ld.get('a_logo'), 'h_logo': ld.get('h_logo')
         })
 
-    return render_template('index.html',
-                           games=all_games,
-                           stats={"W": wins, "L": losses, "PCT": pct},
+    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct},
                            seo={"title": "Edge Engine Pro"})
 
 
