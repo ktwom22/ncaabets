@@ -14,17 +14,25 @@ SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 try:
     creds_json = os.environ.get('GOOGLE_CREDS')
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(creds_json),
-                                                             scope) if creds_json else ServiceAccountCredentials.from_json_keyfile_name(
-        'creds.json', scope)
-    archive_sheet = gspread.authorize(creds).open_by_key(SHEET_ID).worksheet("Archive")
-except:
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    else:
+        creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
+    gc = gspread.authorize(creds)
+    doc = gc.open_by_key(SHEET_ID)
+    archive_sheet = doc.worksheet("Archive")
+except Exception as e:
+    print(f"Auth/Init Error: {e}")
     archive_sheet = None
 
 
+# --- HELPERS ---
 def clean_id(val):
+    """Handles Scientific Notation like 4.02E+08 from Sheets/Pandas"""
     try:
-        return str(int(float(val))) if not pd.isna(val) else "0"
+        if pd.isna(val) or str(val).strip() == '': return "0"
+        return str(int(float(val)))
     except:
         return str(val).strip()
 
@@ -32,14 +40,15 @@ def clean_id(val):
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper()
-    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS"]:
+    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "LADY"]:
         name = name.replace(r, "")
     return name.strip()
 
 
 def clean_val(val, default=0.0):
     try:
-        return float(val) if not pd.isna(val) and str(val).strip() not in ['---', ''] else default
+        if pd.isna(val) or str(val).strip() in ['---', '', 'None', 'nan']: return default
+        return float(val)
     except:
         return default
 
@@ -55,90 +64,164 @@ def get_live_data():
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             live_map[normalize(t_away['team']['displayName'])] = {
-                "id": str(event['id']), "status": event['status']['type']['shortDetail'],
-                "state": event['status']['type']['state'], "s_away": int(clean_val(t_away['score'])),
-                "s_home": int(clean_val(t_home['score'])), "a_logo": t_away['team'].get('logo', ''),
-                "h_logo": t_home['team'].get('logo', '')
+                "id": str(event['id']),
+                "link": event['links'][0]['href'],
+                "status": event['status']['type']['shortDetail'],
+                "state": event['status']['type']['state'],
+                "s_away": int(clean_val(t_away['score'])),
+                "s_home": int(clean_val(t_home['score'])),
+                "away_logo": t_away['team'].get('logo', ''),
+                "home_logo": t_home['team'].get('logo', '')
             }
     except:
         pass
     return live_map
 
 
+# --- ROUTES ---
+@app.route('/api/updates')
+def api_updates():
+    try:
+        live_map = get_live_data()
+        res = requests.get(SHEET_URL, timeout=10)
+        df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
+        df.columns = [str(c).strip() for c in df.columns]
+        tz = pytz.timezone('US/Eastern')
+        today_target = datetime.now(tz).strftime("%-m/%-d")
+
+        updates = []
+        for _, row in df.iterrows():
+            if today_target not in str(row.get('Game Time', '')): continue
+            a = str(row.get('Away Team', '')).strip()
+            if not a: continue
+            ld = live_map.get(normalize(a),
+                              {"status": str(row.get('Game Time', '')), "s_away": 0, "s_home": 0, "state": "pre"})
+            updates.append({
+                "matchup": f"{a} @ {row.get('Home Team')}",
+                "score": f"{ld['s_away']}-{ld['s_home']}",
+                "status": ld['status'],
+                "is_live": ld['state'] == 'in'
+            })
+        return jsonify(updates)
+    except:
+        return jsonify([])
+
+
 @app.route('/')
 def index():
     tz = pytz.timezone('US/Eastern')
-    today_target = f"{datetime.now(tz).month}/{datetime.now(tz).day}"
+    now_tz = datetime.now(tz)
+    # Works on Windows and Linux (1/28 format)
+    today_target = f"{now_tz.month}/{now_tz.day}"
+    today_full_str = now_tz.strftime("%m/%d/%Y")
 
     # 1. READ ARCHIVE
     wins, losses, pct, archive_ids = 0, 0, 0.0, []
+    adf = pd.DataFrame()
     if archive_sheet:
         try:
-            adf = pd.DataFrame(archive_sheet.get_all_records())
-            wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
-            losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
-            pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
-            archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
+            records = archive_sheet.get_all_records()
+            if records:
+                adf = pd.DataFrame(records)
+                wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
+                losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
+                pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
+                if 'ESPN_ID' in adf.columns:
+                    archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
         except:
             pass
 
-    # 2. FETCH DATA
+    # 2. FETCH CURRENT DATA
     live_map = get_live_data()
     try:
-        df = pd.read_csv(io.StringIO(requests.get(SHEET_URL).content.decode('utf-8')))
+        res = requests.get(SHEET_URL, timeout=10)
+        df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
         df.columns = [str(c).strip() for c in df.columns]
     except:
         df = pd.DataFrame()
 
     all_games = []
     for _, row in df.iterrows():
+        # FLEXIBLE DATE CHECK
         if today_target not in str(row.get('Game Time', '')): continue
+
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
+        if not a or a.lower() == 'nan': continue
+
         ld = live_map.get(normalize(a),
                           {"id": "0", "status": str(row.get('Game Time', '')), "state": "pre", "s_away": 0,
                            "s_home": 0})
-        espn_id = clean_id(ld.get('id'))
+        espn_id, state = clean_id(ld.get('id')), ld.get('state')
 
-        # MATH
+        # DATA CLEANING
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
-        pa, pga, ph, pgh = clean_val(row.get('PPG Away')), clean_val(row.get('PPGA Away')), clean_val(
-            row.get('PPG Home')), clean_val(row.get('PPGA Home'))
+        pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
+        pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
-        our_margin = -3.8 - max(min((ra - rh) * 0.18, 28), -28)
-        edge = min(abs(h_spr - our_margin), 15.0)
+        # MATH LOGIC (With Rank Ceiling & Edge Cap)
+        raw_rank_gap = (ra - rh) * 0.18
+        capped_rank_gap = max(min(raw_rank_gap, 28), -28)  # Cap rank impact
+        our_margin = -3.8 - capped_rank_gap
 
-        # PROJECTIONS
-        tp = (pa + pgh + ph + pga) / 2
-        hp, ap = (tp / 2) + (abs(our_margin) / 2), (tp / 2) - (abs(our_margin) / 2)
+        # Calculate Edge with Cap
+        raw_edge = abs(h_spr - our_margin)
+        edge = min(raw_edge, 15.0)
+
+        # LOCK CHECK
+        is_locked = False
+        if espn_id != "0" and espn_id in archive_ids:
+            try:
+                locked_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
+                pick, p_spr = locked_row['Pick'], locked_row['Pick_Spread']
+                is_locked = True
+            except:
+                pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
+        else:
+            pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
+
+        # ARCHIVING
+        if archive_sheet and espn_id != "0":
+            try:
+                if state == "in" and espn_id not in archive_ids:
+                    archive_sheet.append_row(
+                        [today_full_str, f"{a} @ {h}", "LIVE", "0-0", str(pick), p_spr, 0, 0, 0, pa, pga, ph, pgh,
+                         int(ra), int(rh), espn_id])
+                    archive_ids.append(espn_id)
+                    is_locked = True
+                elif state == "post" and espn_id not in archive_ids:
+                    diff = ld['s_home'] - ld['s_away']
+                    res_label = "WIN" if ((diff + h_spr > 0) if pick == h else ((-diff) - h_spr > 0)) else "LOSS"
+                    archive_sheet.append_row(
+                        [today_full_str, f"{a} @ {h}", res_label, f"{ld['s_away']}-{ld['s_home']}", str(pick), p_spr, 0,
+                         0, 0, pa, pga, ph, pgh, int(ra), int(rh), espn_id])
+                    archive_ids.append(espn_id)
+            except:
+                pass
+
+        # FINAL SCORE PROJECTION
+        total_pts = (pa + pgh + ph + pga) / 2
+        hp = (total_pts / 2) + (abs(our_margin) / 2)
+        ap = (total_pts / 2) - (abs(our_margin) / 2)
         if our_margin > 0: hp, ap = ap, hp
 
-        # O/U CONFIDENCE SCALE
-        v_tot = clean_val(row.get('Total'))
-        diff = abs((ap + hp) - v_tot)
-        ou_dir = "OVER" if (ap + hp) > v_tot else "UNDER"
-        if v_tot == 0:
-            conf, tip = "N/A", "No Vegas Total provided."
-        elif diff > 5.0:
-            conf, tip = "MUST BET", "Strong mismatch! Engine total is 5+ points off Vegas."
-        elif diff > 2.5:
-            conf, tip = "GOOD BET", "Statistical advantage identified. 2.5+ point difference."
-        else:
-            conf, tip = "FADE", "Too close to the pin. Vegas has this one right."
-
-        pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
-
         all_games.append({
-            'Matchup': f"{a} @ {h}", 'status': ld['status'], 'is_live': ld['state'] == 'in',
-            'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Edge': round(edge, 1),
-            'OU_Status': conf, 'OU_Pick': f"{ou_dir} {v_tot}", 'OU_Tip': tip,
-            'Proj_Away': round(ap, 1), 'Proj_Home': round(hp, 1), 'Proj_Total': round(ap + hp, 1),
-            'a_logo': ld.get('a_logo') or str(row.get('Away Logo', '')),
-            'h_logo': ld.get('h_logo') or str(row.get('Home Logo', ''))
+            'Matchup': f"{a} @ {h}",
+            'Result': (adf[adf['ESPN_ID'].apply(clean_id) == espn_id]['Result'].values[
+                           -1] if is_locked and not adf.empty and espn_id in archive_ids else ""),
+            'Final_Score': f"{ld['s_away']}-{ld['s_home']}",
+            'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Proj_Away': round(ap, 1),
+            'Proj_Home': round(hp, 1), 'Edge': round(edge, 1),
+            'status': ld['status'], 'is_live': state == 'in', 'is_locked': is_locked,
+            'a_logo': ld.get('away_logo') or str(row.get('Away Logo', '')),
+            'h_logo': ld.get('home_logo') or str(row.get('Home Logo', '')),
+            'a_rank': int(ra), 'h_rank': int(rh)
         })
 
-    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct})
+    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct},
+                           seo={"title": "Edge Engine Pro"})
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
