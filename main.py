@@ -78,44 +78,64 @@ def get_live_data():
     return live_map
 
 
-# --- ROUTES ---
 @app.route('/api/updates')
 def api_updates():
     try:
         live_map = get_live_data()
+
+        # We fetch the sheet to see which games are actually on today's board
         res = requests.get(SHEET_URL, timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
         df.columns = [str(c).strip() for c in df.columns]
-        tz = pytz.timezone('US/Eastern')
-        today_target = datetime.now(tz).strftime("%-m/%-d")
 
-        updates = []
+        tz = pytz.timezone('US/Eastern')
+        now_tz = datetime.now(tz)
+        # Supports "1/30" and "01/30" formats
+        today_targets = [now_tz.strftime("%-m/%-d"), now_tz.strftime("%m/%d")]
+
+        updates = {}
         for _, row in df.iterrows():
-            if today_target not in str(row.get('Game Time', '')): continue
+            g_time = str(row.get('Game Time', ''))
+            if not any(t in g_time for t in today_targets):
+                continue
+
             a = str(row.get('Away Team', '')).strip()
-            if not a: continue
-            ld = live_map.get(normalize(a),
-                              {"status": str(row.get('Game Time', '')), "s_away": 0, "s_home": 0, "state": "pre"})
-            updates.append({
+            if not a or a.lower() == 'nan': continue
+
+            # Match live data from ESPN
+            ld = live_map.get(normalize(a), {
+                "id": "0",
+                "status": g_time,
+                "s_away": 0,
+                "s_home": 0,
+                "state": "pre"
+            })
+
+            # We use a Dictionary keyed by ESPN_ID for faster JS lookup
+            eid = str(ld.get('id', '0'))
+            updates[eid] = {
                 "matchup": f"{a} @ {row.get('Home Team')}",
                 "score": f"{ld['s_away']}-{ld['s_home']}",
                 "status": ld['status'],
-                "is_live": ld['state'] == 'in'
-            })
+                "is_live": ld['state'] == 'in',
+                "state": ld['state']
+            }
+
         return jsonify(updates)
-    except:
-        return jsonify([])
+    except Exception as e:
+        print(f"API Error: {e}")
+        return jsonify({})
 
 
 @app.route('/')
 def index():
     tz = pytz.timezone('US/Eastern')
     now_tz = datetime.now(tz)
-    # Works on Windows and Linux (1/28 format)
+    # Flexible date matching
     today_target = f"{now_tz.month}/{now_tz.day}"
     today_full_str = now_tz.strftime("%m/%d/%Y")
 
-    # 1. READ ARCHIVE
+    # 1. READ ARCHIVE (Stats & Duplicate Prevention)
     wins, losses, pct, archive_ids = 0, 0, 0.0, []
     adf = pd.DataFrame()
     if archive_sheet:
@@ -123,9 +143,13 @@ def index():
             records = archive_sheet.get_all_records()
             if records:
                 adf = pd.DataFrame(records)
+                # Clean up Column names to avoid key errors
+                adf.columns = [str(c).strip() for c in adf.columns]
+
                 wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
                 losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
                 pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
+
                 if 'ESPN_ID' in adf.columns:
                     archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
         except:
@@ -143,14 +167,17 @@ def index():
     all_games = []
     for _, row in df.iterrows():
         # FLEXIBLE DATE CHECK
-        if today_target not in str(row.get('Game Time', '')): continue
+        g_time_raw = str(row.get('Game Time', ''))
+        if today_target not in g_time_raw: continue
 
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         if not a or a.lower() == 'nan': continue
 
-        ld = live_map.get(normalize(a),
-                          {"id": "0", "status": str(row.get('Game Time', '')), "state": "pre", "s_away": 0,
-                           "s_home": 0})
+        # Pull ESPN data (Live score, status, logos)
+        ld = live_map.get(normalize(a), {
+            "id": "0", "status": g_time_raw, "state": "pre",
+            "s_away": 0, "s_home": 0, "a_logo": "", "h_logo": ""
+        })
         espn_id, state = clean_id(ld.get('id')), ld.get('state')
 
         # DATA CLEANING
@@ -159,69 +186,93 @@ def index():
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
-        # MATH LOGIC (With Rank Ceiling & Edge Cap)
+        # MATH LOGIC: PROJECTION & EDGE
         raw_rank_gap = (ra - rh) * 0.18
-        capped_rank_gap = max(min(raw_rank_gap, 28), -28)  # Cap rank impact
+        capped_rank_gap = max(min(raw_rank_gap, 28), -28)
         our_margin = -3.8 - capped_rank_gap
 
-        # Calculate Edge with Cap
-        raw_edge = abs(h_spr - our_margin)
-        edge = min(raw_edge, 15.0)
-
-        # LOCK CHECK
-        is_locked = False
-        if espn_id != "0" and espn_id in archive_ids:
-            try:
-                locked_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
-                pick, p_spr = locked_row['Pick'], locked_row['Pick_Spread']
-                is_locked = True
-            except:
-                pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
-        else:
-            pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
-
-        # ARCHIVING
-        if archive_sheet and espn_id != "0":
-            try:
-                if state == "in" and espn_id not in archive_ids:
-                    archive_sheet.append_row(
-                        [today_full_str, f"{a} @ {h}", "LIVE", "0-0", str(pick), p_spr, 0, 0, 0, pa, pga, ph, pgh,
-                         int(ra), int(rh), espn_id])
-                    archive_ids.append(espn_id)
-                    is_locked = True
-                elif state == "post" and espn_id not in archive_ids:
-                    diff = ld['s_home'] - ld['s_away']
-                    res_label = "WIN" if ((diff + h_spr > 0) if pick == h else ((-diff) - h_spr > 0)) else "LOSS"
-                    archive_sheet.append_row(
-                        [today_full_str, f"{a} @ {h}", res_label, f"{ld['s_away']}-{ld['s_home']}", str(pick), p_spr, 0,
-                         0, 0, pa, pga, ph, pgh, int(ra), int(rh), espn_id])
-                    archive_ids.append(espn_id)
-            except:
-                pass
-
-        # FINAL SCORE PROJECTION
+        # O/U Math
         total_pts = (pa + pgh + ph + pga) / 2
         hp = (total_pts / 2) + (abs(our_margin) / 2)
         ap = (total_pts / 2) - (abs(our_margin) / 2)
         if our_margin > 0: hp, ap = ap, hp
 
+        # LOCK CHECK & PICK PERSISTENCE
+        is_locked = False
+        res_label_from_archive = ""
+        final_score_from_archive = ""
+
+        if espn_id != "0" and espn_id in archive_ids:
+            try:
+                locked_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
+                pick, p_spr = locked_row['Pick'], locked_row['Pick_Spread']
+                res_label_from_archive = str(locked_row['Result']).upper()
+                final_score_from_archive = str(locked_row.get('Score', ''))
+                is_locked = True
+            except:
+                pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
+        else:
+            # New game: Create fresh pick
+            pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
+
+        # 3. AUTO-ARCHIVING (Backfilling Actuals)
+        if archive_sheet and espn_id != "0":
+            try:
+                # Log Live games to lock the pick
+                if state == "in" and espn_id not in archive_ids:
+                    archive_sheet.append_row([
+                        today_full_str, f"{a} @ {h}", "LIVE", "0-0", str(pick), p_spr,
+                        0, 0, 0, pa, pga, ph, pgh, int(ra), int(rh), espn_id
+                    ])
+                    archive_ids.append(espn_id)
+                    is_locked = True
+
+                # Log Final games with Result and Actual Score
+                elif state == "post" and espn_id not in archive_ids:
+                    diff = ld['s_home'] - ld['s_away']
+                    # Win/Loss Calculation
+                    if pick == h:
+                        winner = "WIN" if (diff + h_spr > 0) else "LOSS"
+                    else:
+                        winner = "WIN" if ((-diff) - h_spr > 0) else "LOSS"
+
+                    actual_s = f"{ld['s_away']}-{ld['s_home']}"
+                    archive_sheet.append_row([
+                        today_full_str, f"{a} @ {h}", winner, actual_s, str(pick), p_spr,
+                        0, 0, 0, pa, pga, ph, pgh, int(ra), int(rh), espn_id
+                    ])
+                    archive_ids.append(espn_id)
+                    res_label_from_archive = winner
+                    final_score_from_archive = actual_s
+                    is_locked = True
+            except:
+                pass
+
+        # Determine Final Display Score
+        display_score = f"{ld['s_away']}-{ld['s_home']}"
+        if final_score_from_archive and state == "post":
+            display_score = final_score_from_archive
+
         all_games.append({
             'Matchup': f"{a} @ {h}",
-            'Result': (adf[adf['ESPN_ID'].apply(clean_id) == espn_id]['Result'].values[
-                           -1] if is_locked and not adf.empty and espn_id in archive_ids else ""),
-            'Final_Score': f"{ld['s_away']}-{ld['s_home']}",
-            'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Proj_Away': round(ap, 1),
-            'Proj_Home': round(hp, 1), 'Edge': round(edge, 1),
-            'status': ld['status'], 'is_live': state == 'in', 'is_locked': is_locked,
-            'a_logo': ld.get('away_logo') or str(row.get('Away Logo', '')),
-            'h_logo': ld.get('home_logo') or str(row.get('Home Logo', '')),
-            'a_rank': int(ra), 'h_rank': int(rh)
+            'Result': res_label_from_archive,  # WIN or LOSS
+            'Final_Score': display_score,
+            'Pick': str(pick).upper(),
+            'Pick_Spread': p_spr,
+            'Proj_Away': round(ap, 1),
+            'Proj_Home': round(hp, 1),
+            'Edge': round(min(raw_edge, 15.0), 1),
+            'status': ld['status'],
+            'is_live': state == 'in',
+            'is_locked': is_locked,
+            'a_logo': ld.get('a_logo') or "https://via.placeholder.com/60",
+            'h_logo': ld.get('h_logo') or "https://via.placeholder.com/60",
+            'a_rank': int(ra),
+            'h_rank': int(rh)
         })
 
     return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct},
                            seo={"title": "Edge Engine Pro"})
-
-
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
