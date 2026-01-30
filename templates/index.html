@@ -171,50 +171,61 @@
     <button class="fab fab-stats" onclick="toggleS('stats-sidebar')">STATS</button>
 
     <script>
-        // Sidebar Toggle
+        // Sidebar Toggle Logic
         function toggleS(id) {
             const s = document.getElementById(id);
             const w = window.innerWidth < 600 ? '100%' : '380px';
             s.style.width = (s.style.width === w) ? '0' : w;
         }
 
-        // Live Auto-Refresh Logic
+        // Live Auto-Refresh Engine
         function fetchUpdates() {
             fetch('/api/updates')
                 .then(response => response.json())
                 .then(data => {
-                    // Data is expected as { "ESPN_ID": { score, status, is_live } }
+                    // 'data' is an object keyed by ESPN_ID: { score, status, is_live }
                     for (const id in data) {
-                        const game = data[id];
+                        const gameUpdate = data[id];
 
-                        // Update Score Display
+                        // Update Front Score
                         const scoreEl = document.getElementById(`score-${id}`);
-                        const backScoreEl = document.getElementById(`back-score-${id}`);
-                        if (scoreEl) scoreEl.innerText = game.score;
-                        if (backScoreEl) backScoreEl.innerText = game.score;
+                        if (scoreEl) scoreEl.innerText = gameUpdate.score;
 
-                        // Update Status Text
+                        // Update Back Score
+                        const backScoreEl = document.getElementById(`back-score-${id}`);
+                        if (backScoreEl) backScoreEl.innerText = gameUpdate.score;
+
+                        // Update Status with Pulse Icon
                         const statusEl = document.getElementById(`status-${id}`);
                         if (statusEl) {
-                            let statusHtml = game.is_live ? '<span class="pulse"></span>' : '';
-                            statusEl.innerHTML = statusHtml + game.status;
+                            let statusText = gameUpdate.status;
+                            if (gameUpdate.is_live) {
+                                statusEl.innerHTML = `<span class="pulse"></span>${statusText}`;
+                            } else {
+                                statusEl.innerText = statusText;
+                            }
                         }
 
-                        // Toggle Live Badge
+                        // Toggle Live Badge visibility
                         const liveLabel = document.getElementById(`live-label-${id}`);
                         if (liveLabel) {
-                            if (game.is_live) liveLabel.classList.remove('d-none');
-                            else liveLabel.classList.add('d-none');
+                            if (gameUpdate.is_live) {
+                                liveLabel.classList.remove('d-none');
+                            } else {
+                                liveLabel.classList.add('d-none');
+                            }
                         }
                     }
-                    document.getElementById('last-update').innerText = "Last sync: " + new Date().toLocaleTimeString();
+                    // Update timestamp in Navbar
+                    document.getElementById('last-update').innerText = "Last sync: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
                 })
-                .catch(err => console.error("Update error:", err));
+                .catch(err => console.error("Polling error:", err));
         }
 
-        // Run updates every 30 seconds
+        // Initialize polling every 30 seconds
         setInterval(fetchUpdates, 30000);
-        // Initial run on load
+
+        // Run once on load to ensure fresh data immediately
         window.onload = fetchUpdates;
     </script>
 
