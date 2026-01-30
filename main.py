@@ -143,17 +143,14 @@ def index():
             records = archive_sheet.get_all_records()
             if records:
                 adf = pd.DataFrame(records)
-                # Clean up Column names to avoid key errors
                 adf.columns = [str(c).strip() for c in adf.columns]
-
                 wins = len(adf[adf['Result'].astype(str).str.upper() == 'WIN'])
                 losses = len(adf[adf['Result'].astype(str).str.upper() == 'LOSS'])
                 pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
-
                 if 'ESPN_ID' in adf.columns:
                     archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
-        except:
-            pass
+        except Exception as e:
+            print(f"Archive Read Error: {e}")
 
     # 2. FETCH CURRENT DATA
     live_map = get_live_data()
@@ -166,14 +163,12 @@ def index():
 
     all_games = []
     for _, row in df.iterrows():
-        # FLEXIBLE DATE CHECK
         g_time_raw = str(row.get('Game Time', ''))
         if today_target not in g_time_raw: continue
 
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         if not a or a.lower() == 'nan': continue
 
-        # Pull ESPN data (Live score, status, logos)
         ld = live_map.get(normalize(a), {
             "id": "0", "status": g_time_raw, "state": "pre",
             "s_away": 0, "s_home": 0, "a_logo": "", "h_logo": ""
@@ -186,10 +181,13 @@ def index():
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
-        # MATH LOGIC: PROJECTION & EDGE
+        # MATH LOGIC: PROJECTION & EDGE (FIXED NameError)
         raw_rank_gap = (ra - rh) * 0.18
         capped_rank_gap = max(min(raw_rank_gap, 28), -28)
         our_margin = -3.8 - capped_rank_gap
+
+        # This line defines the missing variable
+        raw_edge = abs(h_spr - our_margin)
 
         # O/U Math
         total_pts = (pa + pgh + ph + pga) / 2
@@ -212,13 +210,11 @@ def index():
             except:
                 pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
         else:
-            # New game: Create fresh pick
             pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
 
-        # 3. AUTO-ARCHIVING (Backfilling Actuals)
+        # 3. AUTO-ARCHIVING
         if archive_sheet and espn_id != "0":
             try:
-                # Log Live games to lock the pick
                 if state == "in" and espn_id not in archive_ids:
                     archive_sheet.append_row([
                         today_full_str, f"{a} @ {h}", "LIVE", "0-0", str(pick), p_spr,
@@ -226,16 +222,12 @@ def index():
                     ])
                     archive_ids.append(espn_id)
                     is_locked = True
-
-                # Log Final games with Result and Actual Score
                 elif state == "post" and espn_id not in archive_ids:
                     diff = ld['s_home'] - ld['s_away']
-                    # Win/Loss Calculation
                     if pick == h:
                         winner = "WIN" if (diff + h_spr > 0) else "LOSS"
                     else:
                         winner = "WIN" if ((-diff) - h_spr > 0) else "LOSS"
-
                     actual_s = f"{ld['s_away']}-{ld['s_home']}"
                     archive_sheet.append_row([
                         today_full_str, f"{a} @ {h}", winner, actual_s, str(pick), p_spr,
@@ -248,19 +240,21 @@ def index():
             except:
                 pass
 
-        # Determine Final Display Score
         display_score = f"{ld['s_away']}-{ld['s_home']}"
         if final_score_from_archive and state == "post":
             display_score = final_score_from_archive
 
+        # 4. FINAL PAYLOAD (Matches HTML keys)
         all_games.append({
             'Matchup': f"{a} @ {h}",
-            'Result': res_label_from_archive,  # WIN or LOSS
+            'ESPN_ID': espn_id,
+            'Result': res_label_from_archive,
             'Final_Score': display_score,
             'Pick': str(pick).upper(),
             'Pick_Spread': p_spr,
             'Proj_Away': round(ap, 1),
             'Proj_Home': round(hp, 1),
+            'Proj_Total': round(total_pts, 1),
             'Edge': round(min(raw_edge, 15.0), 1),
             'status': ld['status'],
             'is_live': state == 'in',
@@ -268,7 +262,10 @@ def index():
             'a_logo': ld.get('a_logo') or "https://via.placeholder.com/60",
             'h_logo': ld.get('h_logo') or "https://via.placeholder.com/60",
             'a_rank': int(ra),
-            'h_rank': int(rh)
+            'h_rank': int(rh),
+            'OU_Status': "GOOD BET" if total_pts > 145 else "FADE",
+            'OU_Pick': f"O/U {round(total_pts)}",
+            'OU_Tip': "Based on average pace."
         })
 
     return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct},
