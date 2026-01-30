@@ -110,7 +110,6 @@ def index():
         ld = live_map.get(normalize(a), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0})
         espn_id, state = clean_id(ld.get('id')), ld.get('state')
 
-        # --- MODEL MATH ---
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
@@ -119,19 +118,20 @@ def index():
         our_margin = -3.8 - max(min((ra - rh) * 0.18, 28), -28)
         true_edge = abs(h_spr - our_margin)
 
-        # --- ACTION LOGIC (THE FILTER) ---
-        if true_edge >= 10.0:
-            action_label = "PLAY"
-            rec_text = "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG PLAY"
+        # Action Logic
+        action_label = "PLAY" if true_edge >= 10.0 else "FADE"
+        if true_edge >= 15:
+            rec_text = "🔥 AUTO-PLAY"
+        elif true_edge >= 10:
+            rec_text = "✅ STRONG"
         else:
-            action_label = "FADE"
-            rec_text = "❌ FADE (LOW EDGE)"
+            rec_text = "⚠️ LOW EDGE"
 
         total_pts = (pa + pgh + ph + pga) / 2
         hp, ap = ((total_pts / 2) + (abs(our_margin) / 2)), ((total_pts / 2) - (abs(our_margin) / 2))
         if our_margin > 0: hp, ap = ap, hp
 
-        # --- PICK PERSISTENCE (LOCKED PICKS) ---
+        # Persistence Check
         if espn_id != "0" and espn_id in archive_ids:
             try:
                 l_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]

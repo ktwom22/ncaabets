@@ -8,35 +8,30 @@
       gtag('js', new Date());
       gtag('config', 'G-VGV5RCKBP4');
     </script>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edge Engine Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; --danger: #da3633; --must: #ffcc00; }
-        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; --danger: #da3633; }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
 
-        .game-container { perspective: 1200px; height: 480px; margin-bottom: 20px; cursor: pointer; transition: transform 0.3s; }
+        .game-container { perspective: 1200px; height: 440px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
-        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
         .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
 
-        /* The Ghost Filter */
-        .faded-card { opacity: 0.45; filter: grayscale(0.85); transform: scale(0.98); }
+        .badge-action { font-size: 0.7rem; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; }
+        .bg-play { background: var(--success); color: #fff; }
+        .bg-fade { background: #30363d; color: #8b949e; }
 
-        /* Action Badge Styling */
-        .action-banner { width: 100%; padding: 10px; text-align: center; font-weight: 900; font-size: 1.1rem; letter-spacing: 1px; }
-        .bg-play { background: var(--success); color: white; border-bottom: 2px solid #1a6328; }
-        .bg-fade { background: #3c444d; color: #8b949e; border-bottom: 2px solid var(--border); }
+        .t-logo { width: 55px; height: 55px; object-fit: contain; }
+        .score-proj { font-size: 2rem; font-weight: 800; color: #8b949e; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
 
-        .t-logo { width: 60px; height: 60px; object-fit: contain; }
-        .score-proj { font-size: 2.2rem; font-weight: 800; color: var(--muted); }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
-
-        .pulse { width: 8px; height: 8px; background: #ff3e3e; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-red 2s infinite; }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 62, 62, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0); } }
+        .pulse { width: 8px; height: 8px; background: #ff3e3e; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 62, 62, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 62, 62, 0); } }
     </style>
 </head>
 <body>
@@ -44,7 +39,7 @@
     <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
             <span class="fw-bold">EDGE ENGINE <span class="text-info">PRO</span></span>
-            <span class="badge bg-success">ACCURACY: {{ stats.PCT }}%</span>
+            <span class="badge bg-dark border border-secondary text-secondary">WIN RATE: {{ stats.PCT }}%</span>
         </div>
     </nav>
 
@@ -52,27 +47,28 @@
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for g in games %}
             <div class="col">
-                <div class="game-container {% if g.Action == 'FADE' %}faded-card{% endif %}" onclick="this.classList.toggle('is-flipped')">
+                <div class="game-container" onclick="this.classList.toggle('is-flipped')">
                     <div class="card-inner shadow-lg">
 
                         <div class="card-front">
-                            <div class="action-banner {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">
-                                ACTION: {{ g.Action }}
-                            </div>
-
                             <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                                <b class="text-info">{{ g.Rec }}</b>
+                                <div>
+                                    <span class="badge-action {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">
+                                        {{ g.Action }}
+                                    </span>
+                                    <span class="ms-2 fw-bold text-info" style="font-size: 0.85rem;">{{ g.Rec }}</span>
+                                </div>
                                 {% if g.is_live %}<span class="badge bg-danger">LIVE</span>{% endif %}
                             </div>
 
                             <div class="text-center p-3">
-                                <div class="fw-bold mb-3" style="font-size: 1.2rem;">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</div>
+                                <div class="fw-bold mb-3" style="font-size: 1.1rem;">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</div>
                                 <div class="d-flex justify-content-around align-items-center">
                                     <div><img src="{{ g.a_logo }}" class="t-logo"><div class="score-proj">{{ g.Proj_Away }}</div></div>
                                     <div class="opacity-25 fw-bold">VS</div>
                                     <div><img src="{{ g.h_logo }}" class="t-logo"><div class="score-proj">{{ g.Proj_Home }}</div></div>
                                 </div>
-                                <div class="bg-dark border border-secondary rounded p-2 mt-3">
+                                <div class="bg-dark border border-secondary rounded p-2 mt-3 mx-4">
                                     <small class="text-secondary d-block" style="font-size: 0.6rem;">LIVE SCORE</small>
                                     <div class="live-score-val">{{ g.Final_Score }}</div>
                                 </div>
@@ -84,25 +80,23 @@
                                     <span style="font-size: 0.75rem;">{% if g.is_live %}<span class="pulse"></span>{% endif %}{{ g.status }}</span>
                                 </div>
                                 <div class="col-6">
-                                    <small class="text-muted d-block">MODEL EDGE</small>
+                                    <small class="text-muted d-block">TRUE EDGE</small>
                                     <b class="text-warning">+{{ g.Edge }}</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="card-back">
-                            <h6 class="text-info border-bottom border-secondary pb-2">STRATEGY BREAKDOWN</h6>
+                            <h6 class="text-info border-bottom border-secondary pb-2">DATA SNAPSHOT</h6>
                             <div class="mt-3">
-                                <p class="mb-1">Matchup: <b>{{ g.Matchup }}</b></p>
-                                <p class="mb-1">Strategy: <b>{{ g.Rec }}</b></p>
-                                <p class="mb-1">Edge Points: <b>+{{ g.Edge }}</b></p>
-                                <p class="mb-1">Projected Total: <b>{{ g.Proj_Total }}</b></p>
+                                <p class="mb-2">Matchup: <b>{{ g.Matchup }}</b></p>
+                                <p class="mb-2">Edge: <b class="text-success">+{{ g.Edge }}</b></p>
+                                <p class="mb-2">Projected Total: <b>{{ g.Proj_Total }}</b></p>
+                                <p class="mb-2">Decision: <b>{{ g.Action }}</b></p>
                             </div>
                             <div class="mt-auto p-3 bg-dark rounded text-center border border-secondary">
-                                <small class="text-secondary d-block">DECISION</small>
-                                <h4 class="{% if g.Action == 'PLAY' %}text-success{% else %}text-muted{% endif %} mb-0">
-                                    {{ g.Action }}
-                                </h4>
+                                <small class="text-secondary">ESTIMATED RESULT</small>
+                                <h5 class="mb-0 text-info">{{ g.Proj_Away }} - {{ g.Proj_Home }}</h5>
                             </div>
                         </div>
 
