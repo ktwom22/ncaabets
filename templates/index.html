@@ -14,29 +14,47 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; --danger: #da3633; }
-        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
+
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; }
+
+        /* Sidebar/Analytics */
         .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 0 0 40px #000; }
+
+        /* Card UI */
         .game-container { perspective: 1200px; height: 460px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
         .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
+
+        /* Logo Fix: Force dimensions to prevent layout shift flicker */
+        .t-logo {
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px;
+            min-height: 50px;
+            object-fit: contain;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .proj-val { font-size: 1.6rem; font-weight: 900; color: #fff; display: block; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
+
+        /* Badges */
         .badge-action { font-size: 0.7rem; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; }
         .bg-play { background: var(--success); color: #fff; }
         .bg-fade { background: #30363d; color: #8b949e; }
-        .t-logo { width: 50px; height: 50px; object-fit: contain; }
-        .proj-val { font-size: 1.6rem; font-weight: 900; color: #fff; display: block; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
-        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; font-weight: bold; cursor: pointer; }
-        .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
 
-        /* Recent Form Styles */
+        /* Animations */
+        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .pulse { color: #ff3e3e; animation: blink 1.5s infinite; font-size: 0.8rem; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+
         .trend-row { display: flex; gap: 8px; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
         .res-circle { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.75rem; color: white; }
-        .res-win { background-color: var(--success); }
-        .res-loss { background-color: var(--danger); }
-
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -44,7 +62,10 @@
     <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
             <span class="fw-bold">EDGE ENGINE <span class="text-info">PRO</span></span>
-            <small id="sync-timer" class="text-muted" style="font-size: 0.7rem;">Syncing...</small>
+            <div>
+                <small id="sync-timer" class="text-muted me-3" style="font-size: 0.7rem;">Syncing...</small>
+                <a href="/logout" class="btn btn-sm btn-outline-secondary" style="font-size: 0.65rem;">LOGOUT</a>
+            </div>
         </div>
     </nav>
 
@@ -52,28 +73,29 @@
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for g in games %}
             <div class="col" id="game-{{ g.ESPN_ID }}">
-                <div class="game-container" onclick="this.classList.toggle('is-flipped')">
-                    <div class="card-inner shadow-lg">
+                <div class="game-container">
+                    <div class="card-inner shadow-lg" onclick="this.parentElement.classList.toggle('is-flipped')">
 
                         <div class="card-front">
-                            <div class="p-3 border-bottom border-secondary d-flex justify-content-between">
+                            <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
                                 <div>
                                     <span class="badge-action {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
                                     <span class="ms-2 fw-bold text-info" style="font-size: 0.85rem;">{{ g.Rec }}</span>
                                 </div>
                                 {% if g.ESPN_ID in archive_ids %}
-                                <span class="text-warning" style="font-size: 0.7rem;">🔒 LOCKED</span>
+                                <span class="text-warning fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">🔒 LOCKED</span>
                                 {% endif %}
                             </div>
 
                             <div class="text-center p-3">
                                 <div class="fw-bold mb-3 text-white">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</div>
-
                                 <div class="d-flex justify-content-around align-items-center mb-2">
                                     <div class="text-center" style="width: 32%;">
                                         <small class="text-muted d-block" style="font-size: 0.55rem;">AWAY PROJ</small>
                                         <span class="proj-val">{{ g.Left_Proj }}</span>
-                                        <img src="{{ g.Left_Logo }}" class="t-logo mt-1">
+                                        <img src="{{ g.Left_Logo }}"
+                                             class="t-logo mt-1"
+                                             onerror="this.onerror=null; this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100';">
                                     </div>
                                     <div class="px-1" style="width: 36%;">
                                         <small class="text-muted d-block" style="font-size: 0.55rem;">LIVE</small>
@@ -82,35 +104,34 @@
                                     <div class="text-center" style="width: 32%;">
                                         <small class="text-muted d-block" style="font-size: 0.55rem;">HOME PROJ</small>
                                         <span class="proj-val">{{ g.Right_Proj }}</span>
-                                        <img src="{{ g.Right_Logo }}" class="t-logo mt-1">
+                                        <img src="{{ g.Right_Logo }}"
+                                             class="t-logo mt-1"
+                                             onerror="this.onerror=null; this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100';">
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="row g-0 border-top border-secondary text-center p-3 mt-auto">
+                            <div class="row g-0 border-top border-secondary text-center p-3 mt-auto bg-dark">
                                 <div class="col-6 border-end border-secondary">
-                                    <small class="text-muted d-block">STATUS</small>
-                                    <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.75rem;">{{ g.status }}</span>
+                                    <small class="text-muted d-block" style="font-size: 0.6rem;">STATUS</small>
+                                    <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.75rem; font-weight: 600;">
+                                        {% if g.is_live %}<span class="pulse">●</span>{% endif %} {{ g.status }}
+                                    </span>
                                 </div>
                                 <div class="col-6">
-                                    <small class="text-muted d-block">TRUE EDGE</small>
+                                    <small class="text-muted d-block" style="font-size: 0.6rem;">TRUE EDGE</small>
                                     <b class="text-warning">+{{ g.Edge }}</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="card-back">
-                            <h6 class="text-info border-bottom border-secondary pb-2">STRATEGY</h6>
-                            <p class="mt-3 mb-1">Matchup: <b>{{ g.Matchup }}</b></p>
-                            <small class="text-secondary">Pick set at start of game</small>
-
-                            <div class="mt-4 p-3 bg-dark rounded text-center border border-secondary">
-                                <small class="text-secondary d-block">MODEL PROJECTION</small>
-                                <h5 class="mb-0 text-info">{{ g.Left_Proj }} - {{ g.Right_Proj }}</h5>
-                            </div>
-
-                            <div class="mt-3 p-2 text-center">
-                                <small class="text-muted">ESPN ID: {{ g.ESPN_ID }}</small>
+                            <h6 class="text-info border-bottom border-secondary pb-2" style="letter-spacing: 2px;">STRATEGY</h6>
+                            <p class="mt-3 mb-1">Matchup: <b class="text-white">{{ g.Matchup }}</b></p>
+                            <small class="text-secondary d-block mb-4">ID: {{ g.ESPN_ID }}</small>
+                            <div class="mt-auto p-3 bg-dark rounded text-center border border-secondary">
+                                <small class="text-secondary d-block mb-1">ENGINE PROJECTION</small>
+                                <h4 class="mb-0 text-info fw-bold">{{ g.Left_Proj }} - {{ g.Right_Proj }}</h4>
                             </div>
                         </div>
 
@@ -123,33 +144,31 @@
 
     <div id="stats-sidebar" class="slider">
         <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5>ANALYTICS</h5>
+            <h5 class="mb-0 fw-bold">ANALYTICS</h5>
             <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
         </div>
         <div class="p-4">
             <div class="text-center">
                 <small class="text-muted d-block">WIN RATE</small>
                 <h1 class="display-2 fw-bold text-info">{{ stats.PCT }}%</h1>
-                <div class="row mt-3 border-top border-bottom border-secondary py-3">
-                    <div class="col-6"><h3 class="mb-0">{{ stats.W }}</h3><small class="text-success">WINS</small></div>
-                    <div class="col-6"><h3 class="mb-0">{{ stats.L }}</h3><small class="text-danger">LOSSES</small></div>
+                <div class="row mt-3 border-top border-bottom border-secondary py-3 mx-0">
+                    <div class="col-6 border-end border-secondary">
+                        <h3 class="mb-0 fw-bold">{{ stats.W }}</h3>
+                        <small class="text-success">WINS</small>
+                    </div>
+                    <div class="col-6">
+                        <h3 class="mb-0 fw-bold">{{ stats.L }}</h3>
+                        <small class="text-danger">LOSSES</small>
+                    </div>
                 </div>
             </div>
 
             <div class="mt-5">
-                <h6 class="text-muted text-center text-uppercase" style="font-size: 0.7rem; letter-spacing: 2px;">Recent Form (Last 10)</h6>
+                <h6 class="text-muted text-center text-uppercase mb-3" style="font-size: 0.7rem; letter-spacing: 2px;">Recent Form</h6>
                 <div class="trend-row">
                     {% for result in last_10 %}
-                    <div class="res-circle {{ 'res-win' if result.Result.upper() == 'WIN' else 'res-loss' }}" title="{{ result.Matchup }}">
+                    <div class="res-circle {{ 'bg-success' if result.Result.upper() == 'WIN' else 'bg-danger' }}">
                         {{ result.Result[0].upper() }}
-                    </div>
-                    {% endfor %}
-                </div>
-                <div class="mt-4">
-                    {% for result in last_10 %}
-                    <div class="d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background: rgba(255,255,255,0.03); font-size: 0.75rem;">
-                        <span class="text-truncate me-2" style="max-width: 180px;">{{ result.Matchup }}</span>
-                        <span class="fw-bold {{ 'text-success' if result.Result.upper() == 'WIN' else 'text-danger' }}">{{ result.Result }}</span>
                     </div>
                     {% endfor %}
                 </div>
@@ -165,21 +184,46 @@
             const w = window.innerWidth < 600 ? '100%' : '320px';
             s.style.width = (s.style.width === w) ? '0' : w;
         }
+
         async function updateScores() {
             try {
                 const res = await fetch('/api/updates');
                 const data = await res.json();
+
                 for (const id in data) {
                     const scoreEl = document.getElementById(`score-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
-                    if (scoreEl) scoreEl.innerText = data[id].score;
-                    if (statusEl) statusEl.innerHTML = (data[id].is_live ? '<span class="pulse">🔴</span> ' : '') + data[id].status;
+
+                    if (scoreEl) {
+                        const newScore = data[id].score;
+                        // ONLY update if text actually changed. Prevents repaint flickering.
+                        if (scoreEl.textContent !== newScore) {
+                            scoreEl.textContent = newScore;
+                        }
+                    }
+
+                    if (statusEl) {
+                        const pulseIcon = data[id].is_live ? '<span class="pulse">●</span> ' : '';
+                        const newStatusHTML = pulseIcon + data[id].status;
+                        // ONLY update if HTML actually changed.
+                        if (statusEl.innerHTML !== newStatusHTML) {
+                            statusEl.innerHTML = newStatusHTML;
+                        }
+                    }
                 }
-                document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            } catch (e) {}
+                document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } catch (e) {
+                console.log("Sync skipped: " + e.message);
+            }
         }
+
+        // 30-second interval
         setInterval(updateScores, 30000);
-        updateScores();
+
+        // Initial check on load
+        window.addEventListener('load', () => {
+            setTimeout(updateScores, 2000);
+        });
     </script>
 </body>
 </html>

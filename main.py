@@ -22,7 +22,7 @@ try:
     doc = gc.open_by_key(SHEET_ID)
     archive_sheet = doc.worksheet("Archive")
 except Exception as e:
-    print(f"Auth Error: {e}");
+    print(f"Auth Error: {e}")
     archive_sheet = None
 
 
@@ -49,6 +49,15 @@ def clean_val(val, default=0.0):
         return default
 
 
+# Updated Logo Constructor
+def get_logo_url(team_id):
+    # If ID is missing or 0, return the default ESPN grey logo
+    if not team_id or str(team_id) == "0":
+        return "https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100"
+
+    # The 'combiner' URL is better because it forces the image to exist at a specific size
+    return f"https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{team_id}.png&w=100&h=100&transparent=true"
+
 def get_live_data():
     live_map = {}
     try:
@@ -60,12 +69,16 @@ def get_live_data():
             comp = event['competitions'][0]
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
+
+            # Use normalize for name matching
             live_map[normalize(t_away['team']['displayName'])] = {
-                "id": str(event['id']), "status": event['status']['type']['shortDetail'],
-                "state": event['status']['type']['state'], "s_away": int(clean_val(t_away['score'])),
+                "id": str(event['id']),
+                "status": event['status']['type']['shortDetail'],
+                "state": event['status']['type']['state'],
+                "s_away": int(clean_val(t_away['score'])),
                 "s_home": int(clean_val(t_home['score'])),
-                "a_logo": t_away['team'].get('logo', '').replace('http://', 'https://'),
-                "h_logo": t_home['team'].get('logo', '').replace('http://', 'https://')
+                "a_logo": get_logo_url(t_away['team'].get('id')),
+                "h_logo": get_logo_url(t_home['team'].get('id'))
             }
     except Exception as e:
         print(f"Live Error: {e}")
@@ -92,18 +105,12 @@ def auto_log_game(game_data, row_stats, existing_ids):
 
 
 def update_finished_results(adf, live_map):
-    """Deep searches for PENDING games and settles them in the Sheet."""
     if not archive_sheet or adf.empty: return
     pending = adf[adf['Result'].astype(str).str.upper() == 'PENDING']
-
     for index, row in pending.iterrows():
         eid = clean_id(row.get('ESPN_ID'))
         if eid == "0": continue
-
-        # Check current scoreboard map
         game_info = next((v for k, v in live_map.items() if v['id'] == eid), None)
-
-        # If not on today's scoreboard, fetch historical summary
         if not game_info:
             try:
                 url = f"http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={eid}"
@@ -116,22 +123,14 @@ def update_finished_results(adf, live_map):
                     game_info = {'state': 'post', 's_away': int(t_away['score']), 's_home': int(t_home['score'])}
             except:
                 continue
-
         if game_info and game_info.get('state') == 'post':
             s_a, s_h = game_info['s_away'], game_info['s_home']
             pick = str(row['Pick']).upper()
             spr = float(row['Pick_Spread'])
             matchup = str(row['Matchup'])
             home_team_name = matchup.split(" @ ")[1].upper()
-
-            # Use keyword matching to see if the pick was the Home team
             is_home_pick = any(word in pick for word in home_team_name.split() if len(word) > 3)
-
-            if is_home_pick:
-                win = (s_h + spr) > s_a
-            else:
-                win = (s_a + spr) > s_h
-
+            win = (s_h + spr) > s_a if is_home_pick else (s_a + spr) > s_h
             row_idx = index + 2
             archive_sheet.update_cell(row_idx, 3, "WIN" if win else "LOSS")
             archive_sheet.update_cell(row_idx, 4, f"{s_a}-{s_h}")
@@ -149,6 +148,7 @@ def api_updates():
 def index():
     tz = pytz.timezone('US/Eastern')
     now_tz = datetime.now(tz)
+    # Target format "1/31"
     today_target = f"{now_tz.month}/{now_tz.day}"
 
     wins, losses, pct, archive_ids, last_10 = 0, 0, 0.0, [], []
@@ -164,8 +164,6 @@ def index():
                 losses = len(settled[settled['Result'].str.upper() == 'LOSS'])
                 pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
                 archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
-
-                # Fetch last 10 settled games
                 last_10 = settled.tail(10)[['Matchup', 'Result']].to_dict('records')
                 last_10.reverse()
         except:
@@ -185,12 +183,30 @@ def index():
     for _, row in df.iterrows():
         g_time = str(row.get('Game Time', ''))
         if today_target not in g_time: continue
+
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         if not a or a.lower() == 'nan': continue
 
-        ld = live_map.get(normalize(a), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0})
-        espn_id = clean_id(ld.get('id'))
+        # --- LOGO EXTRACTION LOGIC ---
+        # We take the URL from your sheet and pull the number (e.g., 2050) from the end
+        def extract_id(url):
+            if pd.isna(url) or 'http' not in str(url): return "0"
+            return str(url).split('/')[-1].replace('.png', '')
 
+        sheet_a_id = extract_id(row.get('Away Logo'))
+        sheet_h_id = extract_id(row.get('Home Logo'))
+
+        ld = live_map.get(normalize(a), {
+            "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
+            "a_logo": get_logo_url(sheet_a_id),
+            "h_logo": get_logo_url(sheet_h_id)
+        })
+
+        espn_id = clean_id(ld.get('id'))
+        left_logo = ld.get('a_logo') if ld.get('id') != "0" else get_logo_url(sheet_a_id)
+        right_logo = ld.get('h_logo') if ld.get('id') != "0" else get_logo_url(sheet_h_id)
+
+        # --- STATS & PROJECTIONS ---
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
@@ -204,6 +220,7 @@ def index():
         proj_left = round((avg_total / 2) - (our_margin / 2), 1)
         proj_right = round((avg_total / 2) + (our_margin / 2), 1)
 
+        # Lock in the pick if it's already in the Archive
         if espn_id != "0" and espn_id in archive_ids:
             try:
                 l_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
@@ -216,7 +233,7 @@ def index():
         game_data = {
             'Matchup': f"{a} @ {h}", 'ESPN_ID': espn_id, 'Live_Score': f"{ld['s_away']}-{ld['s_home']}",
             'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Left_Proj': proj_left, 'Right_Proj': proj_right,
-            'Left_Logo': ld.get('a_logo'), 'Right_Logo': ld.get('h_logo'), 'Edge': round(true_edge, 1),
+            'Left_Logo': left_logo, 'Right_Logo': right_logo, 'Edge': round(true_edge, 1),
             'status': ld['status'], 'is_live': ld.get('state') == 'in',
             'Action': "PLAY" if true_edge >= 10.0 else "FADE",
             'Rec': "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG" if true_edge >= 10 else "⚠️ LOW"
@@ -227,8 +244,8 @@ def index():
 
         all_games.append(game_data)
 
-    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10)
-
+    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
+                           archive_ids=archive_ids)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
