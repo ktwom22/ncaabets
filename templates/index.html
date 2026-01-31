@@ -14,8 +14,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; }
-        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; }
-        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; overflow-x: hidden; }
+        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 0 0 40px #000; }
         .game-container { perspective: 1200px; height: 460px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
@@ -25,9 +25,9 @@
         .bg-play { background: var(--success); color: #fff; }
         .bg-fade { background: #30363d; color: #8b949e; }
         .t-logo { width: 50px; height: 50px; object-fit: contain; }
-        .proj-val { font-size: 1.5rem; font-weight: 800; color: #fff; display: block; }
+        .proj-val { font-size: 1.6rem; font-weight: 900; color: #fff; display: block; }
         .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
-        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; cursor: pointer; }
+        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; font-weight: bold; cursor: pointer; }
         .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
@@ -44,7 +44,7 @@
     <div class="container mt-4 pb-5">
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for g in games %}
-            <div class="col">
+            <div class="col" id="game-{{ g.ESPN_ID }}">
                 <div class="game-container" onclick="this.classList.toggle('is-flipped')">
                     <div class="card-inner shadow-lg">
 
@@ -60,17 +60,17 @@
                                 <div class="fw-bold mb-3 text-white">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</div>
 
                                 <div class="d-flex justify-content-around align-items-center mb-2">
-                                    <div class="text-center" style="width: 30%;">
-                                        <small class="text-muted d-block" style="font-size: 0.6rem;">AWAY</small>
+                                    <div class="text-center" style="width: 32%;">
+                                        <small class="text-muted d-block" style="font-size: 0.55rem;">AWAY PROJ</small>
                                         <span class="proj-val">{{ g.Left_Proj }}</span>
                                         <img src="{{ g.Left_Logo }}" class="t-logo mt-1">
                                     </div>
-                                    <div class="px-2" style="width: 40%;">
-                                        <small class="text-muted d-block" style="font-size: 0.6rem;">LIVE SCORE</small>
+                                    <div class="px-1" style="width: 36%;">
+                                        <small class="text-muted d-block" style="font-size: 0.55rem;">LIVE</small>
                                         <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
                                     </div>
-                                    <div class="text-center" style="width: 30%;">
-                                        <small class="text-muted d-block" style="font-size: 0.6rem;">HOME</small>
+                                    <div class="text-center" style="width: 32%;">
+                                        <small class="text-muted d-block" style="font-size: 0.55rem;">HOME PROJ</small>
                                         <span class="proj-val">{{ g.Right_Proj }}</span>
                                         <img src="{{ g.Right_Logo }}" class="t-logo mt-1">
                                     </div>
@@ -79,20 +79,23 @@
 
                             <div class="row g-0 border-top border-secondary text-center p-3 mt-auto">
                                 <div class="col-6 border-end border-secondary">
-                                    <small class="text-muted d-block">GAME STATUS</small>
+                                    <small class="text-muted d-block">STATUS</small>
                                     <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.75rem;">{{ g.status }}</span>
                                 </div>
                                 <div class="col-6">
-                                    <small class="text-muted d-block">EDGE</small>
+                                    <small class="text-muted d-block">TRUE EDGE</small>
                                     <b class="text-warning">+{{ g.Edge }}</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="card-back">
-                            <h6 class="text-info border-bottom border-secondary pb-2">BACKTEST</h6>
-                            <p class="mt-3">Matchup: {{ g.Matchup }}</p>
-                            <p>Model Spread: {{ (g.Right_Proj - g.Left_Proj)|round(1) }}</p>
+                            <h6 class="text-info border-bottom border-secondary pb-2">STRATEGY</h6>
+                            <p class="mt-3">Matchup: <b>{{ g.Matchup }}</b></p>
+                            <div class="mt-auto p-3 bg-dark rounded text-center border border-secondary">
+                                <small class="text-secondary d-block">MODEL FINAL</small>
+                                <h5 class="mb-0 text-info">{{ g.Left_Proj }} - {{ g.Right_Proj }}</h5>
+                            </div>
                         </div>
 
                     </div>
@@ -104,14 +107,14 @@
 
     <div id="stats-sidebar" class="slider">
         <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5>STATS</h5>
+            <h5>HISTORY</h5>
             <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
         </div>
         <div class="p-4 text-center">
             <h1 class="display-2 fw-bold text-info">{{ stats.PCT }}%</h1>
             <div class="row mt-4">
-                <div class="col-6"><h3>{{ stats.W }}</h3><small>W</small></div>
-                <div class="col-6"><h3>{{ stats.L }}</h3><small>L</small></div>
+                <div class="col-6"><h3>{{ stats.W }}</h3><small>WINS</small></div>
+                <div class="col-6"><h3>{{ stats.L }}</h3><small>LOSSES</small></div>
             </div>
         </div>
     </div>
@@ -121,19 +124,20 @@
     <script>
         function toggleS(id) {
             const s = document.getElementById(id);
-            s.style.width = (s.style.width === '320px') ? '0' : '320px';
+            const w = window.innerWidth < 600 ? '100%' : '320px';
+            s.style.width = (s.style.width === w) ? '0' : w;
         }
         async function updateScores() {
             try {
                 const res = await fetch('/api/updates');
                 const data = await res.json();
                 for (const id in data) {
-                    const s = document.getElementById(`score-${id}`);
-                    const t = document.getElementById(`status-${id}`);
-                    if (s) s.innerText = data[id].score;
-                    if (t) t.innerHTML = (data[id].is_live ? '<span class="pulse">🔴</span> ' : '') + data[id].status;
+                    const scoreEl = document.getElementById(`score-${id}`);
+                    const statusEl = document.getElementById(`status-${id}`);
+                    if (scoreEl) scoreEl.innerText = data[id].score;
+                    if (statusEl) statusEl.innerHTML = (data[id].is_live ? '<span class="pulse">🔴</span> ' : '') + data[id].status;
                 }
-                document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
             } catch (e) {}
         }
         setInterval(updateScores, 30000);
