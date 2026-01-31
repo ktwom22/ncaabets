@@ -26,7 +26,6 @@ except Exception as e:
     archive_sheet = None
 
 
-# --- HELPERS ---
 def clean_id(val):
     try:
         return str(int(float(val))) if not pd.isna(val) and str(val).strip() != '' else "0"
@@ -118,20 +117,31 @@ def index():
         if not a or a.lower() == 'nan': continue
 
         ld = live_map.get(normalize(a), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0})
-        espn_id, state = clean_id(ld.get('id')), ld.get('state')
+        espn_id = clean_id(ld.get('id'))
 
-        # Model Math
+        # --- MATH FIX ---
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
-        our_margin = -3.8 - max(min((ra - rh) * 0.18, 28), -28)
+
+        # Power Rating Margin (Positive = Home is better, Negative = Away is better)
+        our_margin = 3.8 + ((ra - rh) * 0.18)
+        our_margin = max(min(our_margin, 28), -28)
+
+        # True Edge calculation
         true_edge = abs(h_spr - our_margin)
 
-        action_label = "PLAY" if true_edge >= 10.0 else "FADE"
-        rec_text = "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG" if true_edge >= 10 else "⚠️ LOW EDGE"
+        # Base Total
+        avg_total = (pa + pgh + ph + pga) / 2
 
-        # Lock Pick check
+        # Final Projections: Split the total and apply the margin to the correct side
+        # Left (Away) gets the total minus half the margin.
+        # Right (Home) gets the total plus half the margin.
+        proj_home = (avg_total / 2) + (our_margin / 2)
+        proj_away = (avg_total / 2) - (our_margin / 2)
+
+        # --- LOCK PICK ---
         if espn_id != "0" and espn_id in archive_ids:
             try:
                 l_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
@@ -142,14 +152,20 @@ def index():
             pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
 
         all_games.append({
-            'Matchup': f"{a} @ {h}", 'ESPN_ID': espn_id,
-            'Final_Score': f"{ld['s_away']}-{ld['s_home']}",
-            'Pick': str(pick).upper(), 'Pick_Spread': p_spr,
-            'Proj_Away': round(((pa + pgh + ph + pga) / 4) - (our_margin / 2), 1),
-            'Proj_Home': round(((pa + pgh + ph + pga) / 4) + (our_margin / 2), 1),
-            'Edge': round(true_edge, 1), 'status': ld['status'],
-            'is_live': state == 'in', 'a_logo': ld.get('a_logo'), 'h_logo': ld.get('h_logo'),
-            'Action': action_label, 'Rec': rec_text
+            'Matchup': f"{a} @ {h}",
+            'ESPN_ID': espn_id,
+            'Live_Score': f"{ld['s_away']}-{ld['s_home']}",
+            'Pick': str(pick).upper(),
+            'Pick_Spread': p_spr,
+            'Left_Proj': round(proj_away, 1),
+            'Right_Proj': round(proj_home, 1),
+            'Left_Logo': ld.get('a_logo'),
+            'Right_Logo': ld.get('h_logo'),
+            'Edge': round(true_edge, 1),
+            'status': ld['status'],
+            'is_live': ld.get('state') == 'in',
+            'Action': "PLAY" if true_edge >= 10.0 else "FADE",
+            'Rec': "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG" if true_edge >= 10 else "⚠️ LOW"
         })
 
     return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct})
