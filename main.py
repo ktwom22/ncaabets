@@ -12,6 +12,7 @@ ARCHIVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxB
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7w"
 
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
 try:
     creds_json = os.environ.get('GOOGLE_CREDS')
     if creds_json:
@@ -79,18 +80,31 @@ def get_live_data():
 
 
 def auto_log_game(game_data, row_stats, existing_ids):
-    if not archive_sheet or game_data['ESPN_ID'] == "0" or game_data['ESPN_ID'] in existing_ids: return
+    """Writes the game to Google Sheets Archive only once."""
+    if not archive_sheet or game_data['ESPN_ID'] == "0" or str(game_data['ESPN_ID']) in existing_ids:
+        return
     try:
         new_row = [
             datetime.now(pytz.timezone('US/Eastern')).strftime("%Y-%m-%d"),
-            game_data['Matchup'], "PENDING", "0-0",
-            game_data['Pick'], game_data['Pick_Spread'],
-            game_data['Left_Proj'], game_data['Right_Proj'], game_data['Edge'],
-            row_stats['pa'], row_stats['pga'], row_stats['ph'], row_stats['pgh'],
-            row_stats['ra'], row_stats['rh'], game_data['ESPN_ID']
+            game_data['Matchup'],
+            "PENDING",
+            "0-0",
+            game_data['Pick'],
+            game_data['Pick_Spread'],
+            game_data['Left_Proj'],
+            game_data['Right_Proj'],
+            game_data['Edge'],
+            row_stats['pa'],
+            row_stats['pga'],
+            row_stats['ph'],
+            row_stats['pgh'],
+            row_stats['ra'],
+            row_stats['rh'],
+            str(game_data['ESPN_ID'])
         ]
         archive_sheet.append_row(new_row)
-        existing_ids.append(game_data['ESPN_ID'])
+        # Update local list to prevent double-writing in the same loop
+        existing_ids.append(str(game_data['ESPN_ID']))
     except Exception as e:
         print(f"Log Error: {e}")
 
@@ -102,7 +116,7 @@ def index():
     archive_ids, archive_data_map = [], {}
     wins, losses, pct, last_10 = 0, 0, 0.0, []
 
-    # 1. LOAD ARCHIVE
+    # 1. LOAD ARCHIVE FROM CSV (FOR PERSISTENCE)
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
@@ -123,37 +137,48 @@ def index():
     except Exception as e:
         print(f"Archive Load Error: {e}")
 
-    # 2. LOAD TODAY'S DATA
+    # 2. LOAD TODAY'S ACTIVE DATA
     live_map = get_live_data()
     try:
         res = requests.get(SHEET_URL, timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
-    except:
+    except Exception as e:
+        print(f"Main Sheet Error: {e}")
         df = pd.DataFrame()
 
     all_games = []
     for _, row in df.iterrows():
         g_time = str(row.get('Game Time', ''))
-        if today_target not in g_time: continue
+        if today_target not in g_time:
+            continue
 
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         eid = clean_id(row.get('ESPN_ID', '0'))
 
-        # Fetch Raw Stats from Sheet
+        # Standard Stats from main sheet
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
 
-        # 3. LOCKED PICK LOGIC (Persistence Mode)
+        # 3. PERSISTENCE LOGIC (LOCKING)
+        # If game exists in archive, overwrite sheet values with the locked ones
         if eid in archive_data_map:
             locked = archive_data_map[eid]
-            pick, p_spr_val, abs_edge = locked['Pick'], locked['Pick_Spread'], locked['Edge']
-            proj_left, proj_right = locked.get('Proj_Away', 0), locked.get('Proj_Home', 0)
-            # Use stats locked in archive
-            pa, pga, ra = locked.get('PPGA', pa), locked.get('PPGAA', pga), locked.get('RankA', ra)
-            ph, pgh, rh = locked.get('PPGH', ph), locked.get('PPGAH', pgh), locked.get('RankH', rh)
+            pick = str(locked.get('Pick', 'N/A')).upper()
+            p_spr_val = locked.get('Pick_Spread', 0)
+            abs_edge = clean_val(locked.get('Edge', 0))
+            proj_left = clean_val(locked.get('Proj_Away', 0))
+            proj_right = clean_val(locked.get('Proj_Home', 0))
+
+            # Use stats frozen in the archive
+            pa = clean_val(locked.get('PPGA', pa))
+            pga = clean_val(locked.get('PPGAA', pga))
+            ra = int(clean_val(locked.get('RankA', ra)))
+            ph = clean_val(locked.get('PPGH', ph))
+            pgh = clean_val(locked.get('PPGAH', pgh))
+            rh = int(clean_val(locked.get('RankH', rh)))
         else:
-            # DYNAMIC CALCULATION
+            # DYNAMIC CALCULATION (Pick hasn't started yet)
             h_spr = clean_val(row.get('FD Spread'))
             rank_diff = ra - rh
             scaled_diff = (rank_diff / abs(rank_diff)) * (abs(rank_diff) ** 0.65) if rank_diff != 0 else 0
@@ -161,18 +186,22 @@ def index():
             avg_total = (pa + pgh + ph + pga) / 2
             proj_left = round((avg_total / 2) - (our_margin / 2), 1)
             proj_right = round((avg_total / 2) + (our_margin / 2), 1)
+
             engine_home_spread = proj_left - proj_right
             home_edge = h_spr - engine_home_spread
+
             if home_edge > 0:
                 pick, p_spr_val = h, h_spr
             else:
                 pick, p_spr_val = a, -h_spr
             abs_edge = abs(home_edge)
 
+        # Get Live Stats from ESPN API
         ld = live_map.get(normalize(a), live_map.get(normalize(h), {
             "id": eid, "status": g_time, "state": "pre", "s_away": 0, "s_home": 0
         }))
 
+        # Package data for Frontend
         game_data = {
             'Matchup': f"{a} @ {h}",
             'ESPN_ID': ld['id'],
@@ -182,22 +211,29 @@ def index():
             'Left_Proj': proj_left, 'Right_Proj': proj_right,
             'Left_Logo': row.get('Away Logo'), 'Right_Logo': row.get('Home Logo'),
             'Edge': round(abs_edge, 1),
-            'status': ld['status'], 'is_live': ld.get('state') == 'in',
+            'status': ld['status'],
+            'is_live': ld.get('state') == 'in',
             'Action': "PLAY" if abs_edge >= 4.5 else "FADE",
             'Rec': "🔥 AUTO-PLAY" if abs_edge >= 8.5 else "✅ STRONG" if abs_edge >= 5.0 else "⚠️ LOW",
-            # Pass Stats to HTML
             'pa': pa, 'pga': pga, 'ra': int(ra),
             'ph': ph, 'pgh': pgh, 'rh': int(rh)
         }
 
+        # 4. AUTO-LOG TRIGGER
+        # If the game is LIVE or FINAL and not yet archived, save it.
         if ld['id'] != "0" and (ld.get('state') == 'in' or "FINAL" in ld['status'].upper()):
-            auto_log_game(game_data, {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh}, archive_ids)
+            stats_to_save = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh}
+            auto_log_game(game_data, stats_to_save, archive_ids)
 
         all_games.append(game_data)
 
-    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
+    return render_template('index.html',
+                           games=all_games,
+                           stats={"W": wins, "L": losses, "PCT": pct},
+                           last_10=last_10,
                            archive_ids=archive_ids)
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
