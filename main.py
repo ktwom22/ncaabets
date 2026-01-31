@@ -22,7 +22,7 @@ try:
     doc = gc.open_by_key(SHEET_ID)
     archive_sheet = doc.worksheet("Archive")
 except Exception as e:
-    print(f"Auth Error: {e}")
+    print(f"Auth Error: {e}");
     archive_sheet = None
 
 
@@ -61,8 +61,10 @@ def get_live_data():
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             live_map[normalize(t_away['team']['displayName'])] = {
-                "id": str(event['id']), "status": event['status']['type']['shortDetail'],
-                "state": event['status']['type']['state'], "s_away": int(clean_val(t_away['score'])),
+                "id": str(event['id']),
+                "status": event['status']['type']['shortDetail'],
+                "state": event['status']['type']['state'],
+                "s_away": int(clean_val(t_away['score'])),
                 "s_home": int(clean_val(t_home['score'])),
                 "a_logo": t_away['team'].get('logo', '').replace('http://', 'https://'),
                 "h_logo": t_home['team'].get('logo', '').replace('http://', 'https://')
@@ -70,6 +72,14 @@ def get_live_data():
     except Exception as e:
         print(f"Live Error: {e}")
     return live_map
+
+
+@app.route('/api/updates')
+def api_updates():
+    live_map = get_live_data()
+    updates = {data['id']: {"score": f"{data['s_away']}-{data['s_home']}", "status": data['status'],
+                            "is_live": data['state'] == 'in'} for team, data in live_map.items()}
+    return jsonify(updates)
 
 
 @app.route('/')
@@ -110,28 +120,18 @@ def index():
         ld = live_map.get(normalize(a), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0})
         espn_id, state = clean_id(ld.get('id')), ld.get('state')
 
+        # Model Math
         h_spr = clean_val(row.get('FD Spread'))
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
-
         our_margin = -3.8 - max(min((ra - rh) * 0.18, 28), -28)
         true_edge = abs(h_spr - our_margin)
 
-        # Action Logic
         action_label = "PLAY" if true_edge >= 10.0 else "FADE"
-        if true_edge >= 15:
-            rec_text = "🔥 AUTO-PLAY"
-        elif true_edge >= 10:
-            rec_text = "✅ STRONG"
-        else:
-            rec_text = "⚠️ LOW EDGE"
+        rec_text = "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG" if true_edge >= 10 else "⚠️ LOW EDGE"
 
-        total_pts = (pa + pgh + ph + pga) / 2
-        hp, ap = ((total_pts / 2) + (abs(our_margin) / 2)), ((total_pts / 2) - (abs(our_margin) / 2))
-        if our_margin > 0: hp, ap = ap, hp
-
-        # Persistence Check
+        # Lock Pick check
         if espn_id != "0" and espn_id in archive_ids:
             try:
                 l_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
@@ -142,10 +142,12 @@ def index():
             pick, p_spr = (h, h_spr) if (h_spr - our_margin) > 0 else (a, -h_spr)
 
         all_games.append({
-            'Matchup': f"{a} @ {h}", 'ESPN_ID': espn_id, 'Result': str(row.get('Result', '')).upper(),
+            'Matchup': f"{a} @ {h}", 'ESPN_ID': espn_id,
             'Final_Score': f"{ld['s_away']}-{ld['s_home']}",
-            'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Proj_Away': round(ap, 1), 'Proj_Home': round(hp, 1),
-            'Proj_Total': round(total_pts, 1), 'Edge': round(true_edge, 1), 'status': ld['status'],
+            'Pick': str(pick).upper(), 'Pick_Spread': p_spr,
+            'Proj_Away': round(((pa + pgh + ph + pga) / 4) - (our_margin / 2), 1),
+            'Proj_Home': round(((pa + pgh + ph + pga) / 4) + (our_margin / 2), 1),
+            'Edge': round(true_edge, 1), 'status': ld['status'],
             'is_live': state == 'in', 'a_logo': ld.get('a_logo'), 'h_logo': ld.get('h_logo'),
             'Action': action_label, 'Rec': rec_text
         })
