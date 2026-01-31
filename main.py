@@ -1,5 +1,5 @@
 import os, io, requests, pandas as pd, gspread, json
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template
 from datetime import datetime
 import pytz
 from oauth2client.service_account import ServiceAccountCredentials
@@ -8,16 +8,17 @@ app = Flask(__name__)
 
 # --- CONFIG ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
-SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
+ARCHIVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
+SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7w"
 
-# --- GOOGLE API SETUP ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 try:
     creds_json = os.environ.get('GOOGLE_CREDS')
-    creds_dict = json.loads(creds_json) if creds_json else None
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict,
-                                                             scope) if creds_dict else ServiceAccountCredentials.from_json_keyfile_name(
-        'creds.json', scope)
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    else:
+        creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
     gc = gspread.authorize(creds)
     doc = gc.open_by_key(SHEET_ID)
     archive_sheet = doc.worksheet("Archive")
@@ -29,9 +30,10 @@ except Exception as e:
 # --- HELPERS ---
 def clean_id(val):
     try:
-        return str(int(float(val))) if not pd.isna(val) and str(val).strip() != '' else "0"
+        if pd.isna(val) or str(val).strip() == '': return "0"
+        return str(int(float(str(val).strip())))
     except:
-        return str(val).strip()
+        return str(val).split('.')[0].strip()
 
 
 def normalize(name):
@@ -39,24 +41,17 @@ def normalize(name):
     name = str(name).upper()
     for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS"]:
         name = name.replace(r, "")
-    return name.strip()
+    return "".join(filter(str.isalnum, name))
 
 
 def clean_val(val, default=0.0):
     try:
-        return float(val) if not pd.isna(val) and str(val).strip() not in ['---', '', 'nan'] else default
+        s = str(val).strip()
+        if s in ['---', '', 'nan']: return default
+        return float(s)
     except:
         return default
 
-
-# Updated Logo Constructor
-def get_logo_url(team_id):
-    # If ID is missing or 0, return the default ESPN grey logo
-    if not team_id or str(team_id) == "0":
-        return "https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100"
-
-    # The 'combiner' URL is better because it forces the image to exist at a specific size
-    return f"https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{team_id}.png&w=100&h=100&transparent=true"
 
 def get_live_data():
     live_map = {}
@@ -69,26 +64,22 @@ def get_live_data():
             comp = event['competitions'][0]
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
-
-            # Use normalize for name matching
-            live_map[normalize(t_away['team']['displayName'])] = {
+            data = {
                 "id": str(event['id']),
                 "status": event['status']['type']['shortDetail'],
                 "state": event['status']['type']['state'],
                 "s_away": int(clean_val(t_away['score'])),
-                "s_home": int(clean_val(t_home['score'])),
-                "a_logo": get_logo_url(t_away['team'].get('id')),
-                "h_logo": get_logo_url(t_home['team'].get('id'))
+                "s_home": int(clean_val(t_home['score']))
             }
+            live_map[normalize(t_away['team']['displayName'])] = data
+            live_map[normalize(t_home['team']['displayName'])] = data
     except Exception as e:
         print(f"Live Error: {e}")
     return live_map
 
 
-# --- LOGGING & UPDATING ---
 def auto_log_game(game_data, row_stats, existing_ids):
-    if not archive_sheet or game_data['ESPN_ID'] == "0" or game_data['ESPN_ID'] in existing_ids:
-        return
+    if not archive_sheet or game_data['ESPN_ID'] == "0" or game_data['ESPN_ID'] in existing_ids: return
     try:
         new_row = [
             datetime.now(pytz.timezone('US/Eastern')).strftime("%Y-%m-%d"),
@@ -104,78 +95,39 @@ def auto_log_game(game_data, row_stats, existing_ids):
         print(f"Log Error: {e}")
 
 
-def update_finished_results(adf, live_map):
-    if not archive_sheet or adf.empty: return
-    pending = adf[adf['Result'].astype(str).str.upper() == 'PENDING']
-    for index, row in pending.iterrows():
-        eid = clean_id(row.get('ESPN_ID'))
-        if eid == "0": continue
-        game_info = next((v for k, v in live_map.items() if v['id'] == eid), None)
-        if not game_info:
-            try:
-                url = f"http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={eid}"
-                res = requests.get(url, timeout=5).json()
-                header = res.get('header', {})
-                if header.get('status', {}).get('type', {}).get('state') == 'post':
-                    comp = header['competitions'][0]
-                    t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
-                    t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
-                    game_info = {'state': 'post', 's_away': int(t_away['score']), 's_home': int(t_home['score'])}
-            except:
-                continue
-        if game_info and game_info.get('state') == 'post':
-            s_a, s_h = game_info['s_away'], game_info['s_home']
-            pick = str(row['Pick']).upper()
-            spr = float(row['Pick_Spread'])
-            matchup = str(row['Matchup'])
-            home_team_name = matchup.split(" @ ")[1].upper()
-            is_home_pick = any(word in pick for word in home_team_name.split() if len(word) > 3)
-            win = (s_h + spr) > s_a if is_home_pick else (s_a + spr) > s_h
-            row_idx = index + 2
-            archive_sheet.update_cell(row_idx, 3, "WIN" if win else "LOSS")
-            archive_sheet.update_cell(row_idx, 4, f"{s_a}-{s_h}")
-
-
-@app.route('/api/updates')
-def api_updates():
-    live_map = get_live_data()
-    updates = {data['id']: {"score": f"{data['s_away']}-{data['s_home']}", "status": data['status'],
-                            "is_live": data['state'] == 'in'} for team, data in live_map.items()}
-    return jsonify(updates)
-
-
 @app.route('/')
 def index():
-    tz = pytz.timezone('US/Eastern')
-    now_tz = datetime.now(tz)
-    # Target format "1/31"
+    now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
+    archive_ids, archive_data_map = [], {}
+    wins, losses, pct, last_10 = 0, 0, 0.0, []
 
-    wins, losses, pct, archive_ids, last_10 = 0, 0, 0.0, [], []
-    adf = pd.DataFrame()
+    # 1. LOAD ARCHIVE
+    try:
+        ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
+        adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
+        if not adf.empty:
+            adf.columns = [c.strip() for c in adf.columns]
+            for _, row in adf.iterrows():
+                sid = clean_id(row.get('ESPN_ID', '0'))
+                archive_ids.append(sid)
+                archive_data_map[sid] = row
 
-    if archive_sheet:
-        try:
-            records = archive_sheet.get_all_records()
-            if records:
-                adf = pd.DataFrame(records)
-                settled = adf[adf['Result'].str.upper().isin(['WIN', 'LOSS'])]
-                wins = len(settled[settled['Result'].str.upper() == 'WIN'])
-                losses = len(settled[settled['Result'].str.upper() == 'LOSS'])
-                pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
-                archive_ids = [clean_id(x) for x in adf['ESPN_ID'].tolist()]
-                last_10 = settled.tail(10)[['Matchup', 'Result']].to_dict('records')
-                last_10.reverse()
-        except:
-            pass
+            if 'Result' in adf.columns:
+                res_col = adf['Result'].astype(str).str.strip().str.upper()
+                wins = len(adf[res_col == 'WIN'])
+                losses = len(adf[res_col == 'LOSS'])
+                if (wins + losses) > 0:
+                    pct = round((wins / (wins + losses)) * 100, 1)
+                last_10 = adf.tail(10).to_dict('records')[::-1]
+    except Exception as e:
+        print(f"Archive Load Error: {e}")
 
+    # 2. LOAD TODAY'S DATA
     live_map = get_live_data()
-    if not adf.empty: update_finished_results(adf, live_map)
-
     try:
         res = requests.get(SHEET_URL, timeout=10)
         df = pd.read_csv(io.StringIO(res.content.decode('utf-8')))
-        df.columns = [str(c).strip() for c in df.columns]
     except:
         df = pd.DataFrame()
 
@@ -185,67 +137,67 @@ def index():
         if today_target not in g_time: continue
 
         a, h = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
-        if not a or a.lower() == 'nan': continue
+        eid = clean_id(row.get('ESPN_ID', '0'))
 
-        # --- LOGO EXTRACTION LOGIC ---
-        # We take the URL from your sheet and pull the number (e.g., 2050) from the end
-        def extract_id(url):
-            if pd.isna(url) or 'http' not in str(url): return "0"
-            return str(url).split('/')[-1].replace('.png', '')
-
-        sheet_a_id = extract_id(row.get('Away Logo'))
-        sheet_h_id = extract_id(row.get('Home Logo'))
-
-        ld = live_map.get(normalize(a), {
-            "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
-            "a_logo": get_logo_url(sheet_a_id),
-            "h_logo": get_logo_url(sheet_h_id)
-        })
-
-        espn_id = clean_id(ld.get('id'))
-        left_logo = ld.get('a_logo') if ld.get('id') != "0" else get_logo_url(sheet_a_id)
-        right_logo = ld.get('h_logo') if ld.get('id') != "0" else get_logo_url(sheet_h_id)
-
-        # --- STATS & PROJECTIONS ---
-        h_spr = clean_val(row.get('FD Spread'))
+        # Fetch Raw Stats from Sheet
         ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
         pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
         pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
-        stats_bundle = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh}
 
-        our_margin = 3.8 + ((ra - rh) * 0.18)
-        our_margin = max(min(our_margin, 28), -28)
-        true_edge = abs(h_spr - our_margin)
-        avg_total = (pa + pgh + ph + pga) / 2
-        proj_left = round((avg_total / 2) - (our_margin / 2), 1)
-        proj_right = round((avg_total / 2) + (our_margin / 2), 1)
-
-        # Lock in the pick if it's already in the Archive
-        if espn_id != "0" and espn_id in archive_ids:
-            try:
-                l_row = adf[adf['ESPN_ID'].apply(clean_id) == espn_id].iloc[-1]
-                pick, p_spr = l_row['Pick'], l_row['Pick_Spread']
-            except:
-                pick, p_spr = (h, h_spr) if (our_margin > h_spr) else (a, -h_spr)
+        # 3. LOCKED PICK LOGIC (Persistence Mode)
+        if eid in archive_data_map:
+            locked = archive_data_map[eid]
+            pick, p_spr_val, abs_edge = locked['Pick'], locked['Pick_Spread'], locked['Edge']
+            proj_left, proj_right = locked.get('Proj_Away', 0), locked.get('Proj_Home', 0)
+            # Use stats locked in archive
+            pa, pga, ra = locked.get('PPGA', pa), locked.get('PPGAA', pga), locked.get('RankA', ra)
+            ph, pgh, rh = locked.get('PPGH', ph), locked.get('PPGAH', pgh), locked.get('RankH', rh)
         else:
-            pick, p_spr = (h, h_spr) if (our_margin > h_spr) else (a, -h_spr)
+            # DYNAMIC CALCULATION
+            h_spr = clean_val(row.get('FD Spread'))
+            rank_diff = ra - rh
+            scaled_diff = (rank_diff / abs(rank_diff)) * (abs(rank_diff) ** 0.65) if rank_diff != 0 else 0
+            our_margin = 3.2 + (scaled_diff * 0.8)
+            avg_total = (pa + pgh + ph + pga) / 2
+            proj_left = round((avg_total / 2) - (our_margin / 2), 1)
+            proj_right = round((avg_total / 2) + (our_margin / 2), 1)
+            engine_home_spread = proj_left - proj_right
+            home_edge = h_spr - engine_home_spread
+            if home_edge > 0:
+                pick, p_spr_val = h, h_spr
+            else:
+                pick, p_spr_val = a, -h_spr
+            abs_edge = abs(home_edge)
+
+        ld = live_map.get(normalize(a), live_map.get(normalize(h), {
+            "id": eid, "status": g_time, "state": "pre", "s_away": 0, "s_home": 0
+        }))
 
         game_data = {
-            'Matchup': f"{a} @ {h}", 'ESPN_ID': espn_id, 'Live_Score': f"{ld['s_away']}-{ld['s_home']}",
-            'Pick': str(pick).upper(), 'Pick_Spread': p_spr, 'Left_Proj': proj_left, 'Right_Proj': proj_right,
-            'Left_Logo': left_logo, 'Right_Logo': right_logo, 'Edge': round(true_edge, 1),
+            'Matchup': f"{a} @ {h}",
+            'ESPN_ID': ld['id'],
+            'Live_Score': f"{ld['s_away']}-{ld['s_home']}",
+            'Pick': str(pick).upper(),
+            'Pick_Spread': f"{p_spr_val:+g}" if isinstance(p_spr_val, (int, float)) else p_spr_val,
+            'Left_Proj': proj_left, 'Right_Proj': proj_right,
+            'Left_Logo': row.get('Away Logo'), 'Right_Logo': row.get('Home Logo'),
+            'Edge': round(abs_edge, 1),
             'status': ld['status'], 'is_live': ld.get('state') == 'in',
-            'Action': "PLAY" if true_edge >= 10.0 else "FADE",
-            'Rec': "🔥 AUTO-PLAY" if true_edge >= 15 else "✅ STRONG" if true_edge >= 10 else "⚠️ LOW"
+            'Action': "PLAY" if abs_edge >= 4.5 else "FADE",
+            'Rec': "🔥 AUTO-PLAY" if abs_edge >= 8.5 else "✅ STRONG" if abs_edge >= 5.0 else "⚠️ LOW",
+            # Pass Stats to HTML
+            'pa': pa, 'pga': pga, 'ra': int(ra),
+            'ph': ph, 'pgh': pgh, 'rh': int(rh)
         }
 
-        if espn_id != "0" and (ld.get('state') == 'in' or "FINAL" in ld['status'].upper()):
-            auto_log_game(game_data, stats_bundle, archive_ids)
+        if ld['id'] != "0" and (ld.get('state') == 'in' or "FINAL" in ld['status'].upper()):
+            auto_log_game(game_data, {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh}, archive_ids)
 
         all_games.append(game_data)
 
     return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
                            archive_ids=archive_ids)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))

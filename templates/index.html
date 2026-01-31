@@ -13,44 +13,53 @@
     <title>Edge Engine Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --text: #f0f6fc; --success: #238636; --danger: #da3633; }
+        :root {
+            --bg: #0d1117; --card: #161b22; --border: #30363d;
+            --accent: #58a6ff; --text: #f0f6fc; --success: #238636;
+            --danger: #da3633; --warning: #d29922; --locked: #8b949e;
+        }
 
-        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow-x: hidden;
+        }
 
         /* Sidebar/Analytics */
         .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 0 0 40px #000; }
 
         /* Card UI */
-        .game-container { perspective: 1200px; height: 460px; margin-bottom: 20px; cursor: pointer; }
+        .game-container { perspective: 1200px; height: 520px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-        .card-back { transform: rotateY(180deg); padding: 25px; background: #010409; }
+        .card-back { transform: rotateY(180deg); padding: 15px; background: #010409; }
 
-        /* Logo Fix: Force dimensions to prevent layout shift flicker */
-        .t-logo {
-            width: 50px !important;
-            height: 50px !important;
-            min-width: 50px;
-            min-height: 50px;
-            object-fit: contain;
-            background: rgba(255,255,255,0.03);
-            border-radius: 6px;
-            display: block;
-            margin: 0 auto;
-        }
+        /* Locked State */
+        .is-locked .card-front { border: 1px solid var(--warning); border-style: dashed; }
+        .lock-overlay { position: absolute; top: 10px; right: 10px; z-index: 10; color: var(--warning); font-size: 0.75rem; font-weight: 900; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--warning); }
 
-        .proj-val { font-size: 1.6rem; font-weight: 900; color: #fff; display: block; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
+        /* Logos & Front Display */
+        .t-logo { width: 85px; height: 85px; object-fit: contain; background: rgba(255,255,255,0.03); border-radius: 10px; display: block; margin: 0 auto; }
+        .proj-val { font-size: 2.2rem; font-weight: 900; color: #fff; display: block; line-height: 1; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 2rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
 
-        /* Badges */
-        .badge-action { font-size: 0.7rem; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; }
-        .bg-play { background: var(--success); color: #fff; }
+        /* BIGGER STATS BACK OF CARD */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 5px; }
+        .stat-column { background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 12px; border: 1px solid var(--border); }
+        .stat-column h4 { font-size: 0.85rem; color: var(--accent); font-weight: 900; border-bottom: 2px solid #333; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .stat-item { margin-bottom: 10px; }
+        .stat-label { display: block; font-size: 0.6rem; color: #8b949e; text-transform: uppercase; font-weight: 700; }
+        .stat-value { font-size: 1.1rem; font-weight: 800; color: #fff; display: block; }
+        .stat-value.rank { color: var(--warning); font-size: 1.2rem; }
+
+        /* UI Elements */
+        .badge-action { font-size: 0.8rem; font-weight: 900; padding: 5px 10px; border-radius: 4px; text-transform: uppercase; }
+        .bg-play { background: var(--success); color: #fff; box-shadow: 0 0 15px rgba(35, 134, 54, 0.3); }
         .bg-fade { background: #30363d; color: #8b949e; }
-
-        /* Animations */
         .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .pulse { color: #ff3e3e; animation: blink 1.5s infinite; font-size: 0.8rem; }
+        .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
         .trend-row { display: flex; gap: 8px; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
@@ -61,7 +70,7 @@
 
     <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
-            <span class="fw-bold">EDGE ENGINE <span class="text-info">PRO</span></span>
+            <span class="fw-bold tracking-tight">EDGE ENGINE <span class="text-info">PRO</span></span>
             <div>
                 <small id="sync-timer" class="text-muted me-3" style="font-size: 0.7rem;">Syncing...</small>
                 <a href="/logout" class="btn btn-sm btn-outline-secondary" style="font-size: 0.65rem;">LOGOUT</a>
@@ -72,66 +81,116 @@
     <div class="container mt-4 pb-5">
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for g in games %}
+            {% set is_locked = g.ESPN_ID in archive_ids or g.is_live %}
             <div class="col" id="game-{{ g.ESPN_ID }}">
-                <div class="game-container">
+                <div class="game-container {% if is_locked %}is-locked{% endif %}">
                     <div class="card-inner shadow-lg" onclick="this.parentElement.classList.toggle('is-flipped')">
 
                         <div class="card-front">
+                            {% if is_locked %}
+                            <div class="lock-overlay">🔒 LOCKED</div>
+                            {% endif %}
+
                             <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
                                 <div>
                                     <span class="badge-action {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                    <span class="ms-2 fw-bold text-info" style="font-size: 0.85rem;">{{ g.Rec }}</span>
+                                    <span class="ms-2 fw-bold text-info" style="font-size: 0.9rem;">{{ g.Rec }}</span>
                                 </div>
-                                {% if g.ESPN_ID in archive_ids %}
-                                <span class="text-warning fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">🔒 LOCKED</span>
+                                {% if g.is_live %}
+                                <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
                                 {% endif %}
                             </div>
 
                             <div class="text-center p-3">
-                                <div class="fw-bold mb-3 text-white">PICK: {{ g.Pick }} {{ g.Pick_Spread }}</div>
+                                <div class="mb-4">
+                                    <small class="text-muted d-block mb-1" style="font-size: 0.65rem; letter-spacing: 1px; text-transform: uppercase;">
+                                        {{ 'Locked Selection' if is_locked else 'Current Selection' }}
+                                    </small>
+                                    <div class="fw-bold text-white" style="font-size: 1.5rem;">
+                                        {{ g.Pick }} <span class="text-warning">{{ g.Pick_Spread }}</span>
+                                    </div>
+                                </div>
+
                                 <div class="d-flex justify-content-around align-items-center mb-2">
-                                    <div class="text-center" style="width: 32%;">
-                                        <small class="text-muted d-block" style="font-size: 0.55rem;">AWAY PROJ</small>
+                                    <div class="text-center">
+                                        <small class="text-muted d-block mb-2" style="font-size: 0.6rem;">AWAY</small>
+                                        <img src="{{ g.Left_Logo }}" class="t-logo mb-2" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png'">
                                         <span class="proj-val">{{ g.Left_Proj }}</span>
-                                        <img src="{{ g.Left_Logo }}"
-                                             class="t-logo mt-1"
-                                             onerror="this.onerror=null; this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100';">
                                     </div>
-                                    <div class="px-1" style="width: 36%;">
-                                        <small class="text-muted d-block" style="font-size: 0.55rem;">LIVE</small>
+                                    <div class="px-2">
                                         <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
+                                        <small class="text-muted d-block mt-1" style="font-size: 0.6rem; font-weight: bold;">LIVE SCORE</small>
                                     </div>
-                                    <div class="text-center" style="width: 32%;">
-                                        <small class="text-muted d-block" style="font-size: 0.55rem;">HOME PROJ</small>
+                                    <div class="text-center">
+                                        <small class="text-muted d-block mb-2" style="font-size: 0.6rem;">HOME</small>
+                                        <img src="{{ g.Right_Logo }}" class="t-logo mb-2" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png'">
                                         <span class="proj-val">{{ g.Right_Proj }}</span>
-                                        <img src="{{ g.Right_Logo }}"
-                                             class="t-logo mt-1"
-                                             onerror="this.onerror=null; this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png&w=100&h=100';">
                                     </div>
                                 </div>
                             </div>
 
                             <div class="row g-0 border-top border-secondary text-center p-3 mt-auto bg-dark">
                                 <div class="col-6 border-end border-secondary">
-                                    <small class="text-muted d-block" style="font-size: 0.6rem;">STATUS</small>
-                                    <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.75rem; font-weight: 600;">
-                                        {% if g.is_live %}<span class="pulse">●</span>{% endif %} {{ g.status }}
-                                    </span>
+                                    <small class="text-muted d-block" style="font-size: 0.65rem;">GAME STATUS</small>
+                                    <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
                                 </div>
                                 <div class="col-6">
-                                    <small class="text-muted d-block" style="font-size: 0.6rem;">TRUE EDGE</small>
-                                    <b class="text-warning">+{{ g.Edge }}</b>
+                                    <small class="text-muted d-block" style="font-size: 0.65rem;">GAP ADVANTAGE</small>
+                                    <b class="text-warning" style="font-size: 1.1rem;">+{{ g.Edge }} PTS</b>
                                 </div>
                             </div>
                         </div>
 
                         <div class="card-back">
-                            <h6 class="text-info border-bottom border-secondary pb-2" style="letter-spacing: 2px;">STRATEGY</h6>
-                            <p class="mt-3 mb-1">Matchup: <b class="text-white">{{ g.Matchup }}</b></p>
-                            <small class="text-secondary d-block mb-4">ID: {{ g.ESPN_ID }}</small>
-                            <div class="mt-auto p-3 bg-dark rounded text-center border border-secondary">
-                                <small class="text-secondary d-block mb-1">ENGINE PROJECTION</small>
-                                <h4 class="mb-0 text-info fw-bold">{{ g.Left_Proj }} - {{ g.Right_Proj }}</h4>
+                            <h6 class="text-info border-bottom border-secondary pb-2 mb-2" style="letter-spacing: 2px; font-size: 0.75rem; font-weight: 800;">ADVANCED ENGINE METRICS</h6>
+
+                            <div class="stats-grid">
+                                <div class="stat-column">
+                                    <h4>{{ g.Matchup.split('@')[0] }}</h4>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Power Rank</span>
+                                        <span class="stat-value rank">#{{ g.ra }}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Offense (PPG)</span>
+                                        <span class="stat-value text-info">{{ g.pa }}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Defense (PPGA)</span>
+                                        <span class="stat-value">{{ g.pga }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="stat-column">
+                                    <h4>{{ g.Matchup.split('@')[1] }}</h4>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Power Rank</span>
+                                        <span class="stat-value rank">#{{ g.rh }}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Offense (PPG)</span>
+                                        <span class="stat-value text-info">{{ g.ph }}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Defense (PPGA)</span>
+                                        <span class="stat-value">{{ g.pgh }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 p-3 bg-dark rounded border border-secondary text-center">
+                                <small class="text-muted d-block mb-1" style="font-size: 0.65rem; text-transform: uppercase;">Engine Edge Delta</small>
+                                <span class="text-warning fw-bold" style="font-size: 1.2rem;">{{ g.Edge }} POINT EDGE</span>
+                            </div>
+
+                            <div class="mt-auto pt-2 border-top border-secondary text-center">
+                                <small class="text-secondary" style="font-size: 0.6rem; font-style: italic;">
+                                    {% if is_locked %}
+                                    LOCKED: Stats represent data at time of tip-off.
+                                    {% else %}
+                                    LIVE: Data refreshing every 30 seconds.
+                                    {% endif %}
+                                </small>
                             </div>
                         </div>
 
@@ -143,38 +202,52 @@
     </div>
 
     <div id="stats-sidebar" class="slider">
-        <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">ANALYTICS</h5>
-            <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
-        </div>
-        <div class="p-4">
-            <div class="text-center">
-                <small class="text-muted d-block">WIN RATE</small>
-                <h1 class="display-2 fw-bold text-info">{{ stats.PCT }}%</h1>
-                <div class="row mt-3 border-top border-bottom border-secondary py-3 mx-0">
-                    <div class="col-6 border-end border-secondary">
-                        <h3 class="mb-0 fw-bold">{{ stats.W }}</h3>
-                        <small class="text-success">WINS</small>
-                    </div>
-                    <div class="col-6">
-                        <h3 class="mb-0 fw-bold">{{ stats.L }}</h3>
-                        <small class="text-danger">LOSSES</small>
-                    </div>
-                </div>
-            </div>
+    <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">ANALYTICS</h5>
+        <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
+    </div>
 
-            <div class="mt-5">
-                <h6 class="text-muted text-center text-uppercase mb-3" style="font-size: 0.7rem; letter-spacing: 2px;">Recent Form</h6>
-                <div class="trend-row">
-                    {% for result in last_10 %}
-                    <div class="res-circle {{ 'bg-success' if result.Result.upper() == 'WIN' else 'bg-danger' }}">
-                        {{ result.Result[0].upper() }}
-                    </div>
-                    {% endfor %}
+    <div class="p-4">
+        <div class="text-center mb-5">
+            <small class="text-muted d-block">SEASON WIN RATE</small>
+            <h1 class="display-2 fw-bold text-info">{{ stats.PCT }}%</h1>
+            <div class="row mt-3 border-top border-bottom border-secondary py-3 mx-0">
+                <div class="col-6 border-end border-secondary">
+                    <h3 class="mb-0 fw-bold">{{ stats.W }}</h3>
+                    <small class="text-success">WINS</small>
+                </div>
+                <div class="col-6">
+                    <h3 class="mb-0 fw-bold">{{ stats.L }}</h3>
+                    <small class="text-danger">LOSSES</small>
                 </div>
             </div>
+        </div>
+
+        <h6 class="text-muted text-uppercase mb-3" style="font-size: 0.7rem; letter-spacing: 2px; font-weight: 800;">Recent Game History</h6>
+        <div class="list-group list-group-flush border-top border-secondary">
+            {% for result in last_10 %}
+            <div class="list-group-item bg-transparent border-secondary px-0 py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <div class="res-circle {{ 'bg-success' if result.Result.upper() == 'WIN' else 'bg-danger' }} me-3" style="width: 35px; height: 35px; min-width: 35px;">
+                            {{ result.Result[0].upper() }}
+                        </div>
+                        <div>
+                            <div class="fw-bold text-white" style="font-size: 0.85rem;">{{ result.Matchup }}</div>
+                            <small class="text-muted" style="font-size: 0.7rem;">Pick: {{ result.Pick }} {{ result.Spread }}</small>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge {% if result.Result.upper() == 'WIN' %}text-success{% else %}text-danger{% endif %}" style="font-size: 0.7rem; border: 1px solid currentColor;">
+                            {{ result.Final_Score if result.Final_Score else 'FINAL' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
+</div>
 
     <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
 
@@ -189,41 +262,26 @@
             try {
                 const res = await fetch('/api/updates');
                 const data = await res.json();
-
                 for (const id in data) {
                     const scoreEl = document.getElementById(`score-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
-
-                    if (scoreEl) {
-                        const newScore = data[id].score;
-                        // ONLY update if text actually changed. Prevents repaint flickering.
-                        if (scoreEl.textContent !== newScore) {
-                            scoreEl.textContent = newScore;
-                        }
+                    if (scoreEl && scoreEl.textContent !== data[id].score) {
+                        scoreEl.textContent = data[id].score;
+                        scoreEl.style.transition = "color 0.5s";
+                        scoreEl.style.color = "#fff";
+                        setTimeout(() => scoreEl.style.color = "var(--accent)", 2000);
                     }
-
                     if (statusEl) {
                         const pulseIcon = data[id].is_live ? '<span class="pulse">●</span> ' : '';
-                        const newStatusHTML = pulseIcon + data[id].status;
-                        // ONLY update if HTML actually changed.
-                        if (statusEl.innerHTML !== newStatusHTML) {
-                            statusEl.innerHTML = newStatusHTML;
-                        }
+                        statusEl.innerHTML = pulseIcon + data[id].status;
                     }
                 }
                 document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            } catch (e) {
-                console.log("Sync skipped: " + e.message);
-            }
+            } catch (e) { console.log("Update failed"); }
         }
 
-        // 30-second interval
         setInterval(updateScores, 30000);
-
-        // Initial check on load
-        window.addEventListener('load', () => {
-            setTimeout(updateScores, 2000);
-        });
+        window.addEventListener('load', () => setTimeout(updateScores, 1000));
     </script>
 </body>
 </html>
