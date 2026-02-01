@@ -6,6 +6,7 @@ import gspread
 import json
 import pytz
 import stripe
+import resend
 from flask import Flask, render_template, jsonify, redirect, url_for, request, flash
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
@@ -13,7 +14,6 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import select
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
 
 app = Flask(__name__)
@@ -23,18 +23,14 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-key-123')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Stripe & Mail Config
+# Stripe & Resend Config
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('EMAIL_USER')
-app.config['MAIL_PASSWORD'] = os.environ.get('EMAIL_PASS')
+resend.api_key = os.environ.get('RESEND_API_KEY')
 
 db = SQLAlchemy(app)
-mail = Mail(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
 
 # --- DATABASE MODELS ---
 class User(UserMixin, db.Model):
@@ -42,7 +38,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     is_premium = db.Column(db.Boolean, default=False)
-    stripe_id = db.Column(db.String(100))
+    stripe_id = db.Column(db.String(100))  # Used for Customer Portal
 
     def get_reset_token(self):
         s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
@@ -57,15 +53,18 @@ class User(UserMixin, db.Model):
             return None
         return db.session.get(User, user_id)
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
 
 # --- GOOGLE SHEETS & LIVE API CONFIG ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
 ARCHIVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
 
 # --- UTILITIES ---
 def get_gspread_client():
@@ -81,6 +80,7 @@ def get_gspread_client():
         print(f"Auth Error: {e}")
         return None
 
+
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper()
@@ -88,31 +88,39 @@ def normalize(name):
         name = name.replace(r, "")
     return "".join(filter(str.isalnum, name))
 
+
 def clean_val(val, default=0.0):
     try:
         s = str(val).strip()
         if s in ['---', '', 'nan', 'None']: return default
         return float(s)
-    except: return default
+    except:
+        return default
+
 
 def clean_id(val):
     try:
         if pd.isna(val) or str(val).strip() == '': return "0"
         return str(int(float(str(val).strip())))
-    except: return str(val).split('.')[0].strip()
+    except:
+        return str(val).split('.')[0].strip()
+
 
 def get_live_data():
     live_map = {}
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get("http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=150", headers=headers, timeout=5).json()
+        res = requests.get(
+            "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=150",
+            headers=headers, timeout=5).json()
         for event in res.get('events', []):
             comp = event['competitions'][0]
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             data = {
                 "id": str(event['id']),
-                "status": "FINAL" if event['status']['type']['state'] == "post" else event['status']['type']['shortDetail'],
+                "status": "FINAL" if event['status']['type']['state'] == "post" else event['status']['type'][
+                    'shortDetail'],
                 "state": event['status']['type']['state'],
                 "s_away": int(clean_val(t_away.get('score', 0))),
                 "s_home": int(clean_val(t_home.get('score', 0))),
@@ -120,13 +128,16 @@ def get_live_data():
                 "h_team": t_home['team']['displayName'],
                 "a_logo": t_away['team'].get('logo', ''),
                 "h_logo": t_home['team'].get('logo', ''),
-                "plays": [{"clock": "LIVE", "text": p.strip()} for p in comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
+                "plays": [{"clock": "LIVE", "text": p.strip()} for p in
+                          comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
             }
             live_map[normalize(t_away['team']['displayName'])] = data
             live_map[normalize(t_home['team']['displayName'])] = data
             live_map[str(event['id'])] = data
-    except Exception as e: print(f"Live API Error: {e}")
+    except Exception as e:
+        print(f"Live API Error: {e}")
     return live_map
+
 
 def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     eid = str(game_data['ESPN_ID']).strip()
@@ -136,7 +147,7 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
         if eid in col_p_values:
             if is_finished:
                 row_idx = col_p_values.index(eid) + 1
-                curr_res = archive_sheet.cell(row_idx, 3).value
+                curr_res = archive_sheet.cell(row_idx, 3).value  # Column C: Result
                 if curr_res == "PENDING":
                     score_a, score_h = ld['s_away'], ld['s_home']
                     pick_team = normalize(game_data['Raw_Pick'])
@@ -155,22 +166,22 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
             ]
             archive_sheet.append_row(new_row, value_input_option='RAW')
             col_p_values.append(eid)
-    except Exception as e: print(f"Logging Failed: {e}")
+    except Exception as e:
+        print(f"Logging Failed: {e}")
+
 
 # --- CORE ROUTES ---
 
 @app.route('/')
 def index():
-    is_premium = False
-    if current_user.is_authenticated:
-        is_premium = current_user.is_premium
-    if request.args.get('key') == 'pro_access':
-        is_premium = True
+    is_premium = current_user.is_authenticated and current_user.is_premium
+    if request.args.get('key') == 'pro_access': is_premium = True
 
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
+    # 1. Load Archive to "Lock In" Picks
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
@@ -182,13 +193,15 @@ def index():
             wins, losses = len(adf[res_col == 'WIN']), len(adf[res_col == 'LOSS'])
             if (wins + losses) > 0: pct = round((wins / (wins + losses)) * 100, 1)
             last_10 = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
-    except: pass
+    except:
+        pass
 
+    # 2. Get Gspread for Logging
     gc = get_gspread_client()
     archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive") if gc else None
-    col_p_values = archive_sheet.col_values(16) if archive_sheet else []
-    live_map = get_live_data()
+    col_p_values = archive_sheet.col_values(16) if archive_sheet else []  # Col P is ESPN_ID
 
+    live_map = get_live_data()
     try:
         df = pd.read_csv(io.StringIO(requests.get(SHEET_URL).text))
     except:
@@ -201,13 +214,16 @@ def index():
 
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name),
-                         {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0}))
+                                                          {"id": "0", "status": g_time, "state": "pre", "s_away": 0,
+                                                           "s_home": 0}))
         eid = clean_id(ld.get('id', '0'))
 
+        # LOGIC: If game is in Archive, use those values (Locked). Otherwise, calculate.
         if eid != "0" and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
-            proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(hist.get('Edge'))
+            proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
+                hist.get('Edge'))
             stats = {'pa': hist.get('Away_PPG'), 'pga': hist.get('Away_PPGA'), 'ph': hist.get('Home_PPG'),
                      'pgh': hist.get('Home_PPGA'), 'ra': hist.get('Away_Rank'), 'rh': hist.get('Home_Rank'),
                      'sos_a': hist.get('Away_SOS'), 'sos_h': hist.get('Home_SOS')}
@@ -243,12 +259,25 @@ def index():
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
         all_games.append(game_obj)
 
-    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=is_premium)
+    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
+                           is_premium=is_premium)
 
-# --- AUTH ROUTES ---
+
+# --- API ROUTE FOR LIVE UPDATES (Fixes 404) ---
+@app.route('/api/updates')
+def api_updates():
+    live_map = get_live_data()
+    return jsonify(live_map)
+
+
+# --- AUTH & SUBSCRIPTION ROUTES ---
+
+@app.route('/subscribe')  # Fixes 404
+def subscribe_alias():
+    return redirect(url_for('signup'))
+
 
 @app.route('/signup', methods=['GET', 'POST'])
-@app.route('/subscribe', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
         email = request.form.get('email').lower()
@@ -263,6 +292,7 @@ def signup():
         return redirect(url_for('create_checkout_session'))
     return render_template('subscribe.html')
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -274,6 +304,7 @@ def login():
             return redirect(url_for('index') if u.is_premium else url_for('create_checkout_session'))
         flash("Invalid credentials.")
     return render_template('login.html')
+
 
 @app.route('/logout')
 @login_required
@@ -287,47 +318,25 @@ def forgot_password():
     if request.method == 'POST':
         email = request.form.get('email').lower()
         user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
-
-        # We always show this message so hackers can't "fish" for valid emails
-        success_msg = "If an account matches that email, a reset link has been sent."
-
         if user:
             token = user.get_reset_token()
             reset_url = url_for('reset_token', token=token, _external=True)
-
-            # 1. Print to logs for immediate testing
-            print(f"DEBUG: Reset Link for {email}: {reset_url}")
-
-            # 2. Attempt to send the actual email
-            try:
-                msg = Message(
-                    subject="Password Reset Request - ProPicks",
-                    sender=app.config['MAIL_USERNAME'],
-                    recipients=[email]
-                )
-                msg.body = f"""To reset your password, click the link below:
-
-{reset_url}
-
-If you did not make this request, simply ignore this email and no changes will be made.
-This link will expire in 30 minutes.
-"""
-                mail.send(msg)
-            except Exception as e:
-                # If email fails (e.g. bad credentials), we log the error
-                # but don't stop the user so they don't see a "500 Error" page.
-                print(f"EMAIL ERROR: {e}")
-
-        flash(success_msg)
+            resend.Emails.send({
+                "from": "ProPicks <onboarding@resend.dev>",
+                "to": email,
+                "subject": "Reset Your Password",
+                "html": f"<p>Click here to reset: <a href='{reset_url}'>{reset_url}</a></p>"
+            })
+        flash("If an account exists, a reset link has been sent.")
         return redirect(url_for('login'))
-
     return render_template('forgot_password.html')
+
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_token(token):
     user = User.verify_reset_token(token)
     if not user:
-        flash('Invalid or expired token.')
+        flash('Invalid/expired token.')
         return redirect(url_for('forgot_password'))
     if request.method == 'POST':
         user.password = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
@@ -336,7 +345,8 @@ def reset_token(token):
         return redirect(url_for('login'))
     return render_template('reset_password.html')
 
-# --- STRIPE ROUTES ---
+
+# --- STRIPE & BILLING ---
 
 @app.route('/create-checkout-session')
 @login_required
@@ -351,7 +361,20 @@ def create_checkout_session():
             cancel_url=url_for('index', _external=True),
         )
         return redirect(checkout_session.url, code=303)
-    except Exception as e: return f"Stripe Error: {e}", 500
+    except Exception as e:
+        return f"Stripe Error: {e}", 500
+
+
+@app.route('/billing-portal')
+@login_required
+def billing_portal():
+    # Allows users to cancel or update their card via Stripe directly
+    portal_session = stripe.billing_portal.Session.create(
+        customer=current_user.stripe_id,
+        return_url=url_for('index', _external=True),
+    )
+    return redirect(portal_session.url)
+
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
@@ -359,12 +382,16 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig, os.environ.get('STRIPE_WEBHOOK_SECRET'))
         if event['type'] == 'checkout.session.completed':
-            user = db.session.execute(select(User).filter_by(email=event['data']['object'].get('customer_email'))).scalar_one_or_none()
+            session = event['data']['object']
+            user = db.session.execute(select(User).filter_by(email=session.get('customer_email'))).scalar_one_or_none()
             if user:
                 user.is_premium = True
+                user.stripe_id = session.get('customer')
                 db.session.commit()
-    except: return jsonify(success=False), 400
+    except:
+        return jsonify(success=False), 400
     return jsonify(success=True)
+
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()

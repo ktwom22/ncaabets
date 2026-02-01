@@ -16,3 +16,4 @@ flask-migrate
 stripe
 python-dotenv
 Flask-Mail
+resend
