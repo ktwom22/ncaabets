@@ -271,17 +271,18 @@ def signup():
             flash("Email already exists")
             return redirect(url_for('login'))
 
-        # Create user
+        # Create and save user
         u = User(email=email, password=generate_password_hash(pw, method='pbkdf2:sha256'))
         db.session.add(u)
         db.session.commit()
 
-        # LOG IN THE USER IMMEDIATELY
+        # Log them in so current_user is populated
         login_user(u)
 
-        # REDIRECT DIRECTLY TO STRIPE
-        return redirect(url_for('create_checkout_session'))
+        # Redirect to the checkout function
+        return redirect(url_for('checkout'))
 
+    # If they just visit /signup, show them the subscribe/signup page
     return render_template('subscribe.html')
 
 
@@ -291,17 +292,16 @@ def login():
         u = db.session.execute(select(User).filter_by(email=request.form.get('email').lower())).scalar_one_or_none()
         if u and check_password_hash(u.password, request.form.get('password')):
             login_user(u)
-            # If they are already premium, go to index. If not, go to subscribe.
             if u.is_premium:
                 return redirect(url_for('index'))
-            else:
-                return redirect(url_for('create_checkout_session'))
+            return redirect(url_for('checkout'))
+        flash("Invalid login credentials")
     return render_template('login.html')
 
 
-@app.route('/create-checkout-session', methods=['POST', 'GET'])
+@app.route('/checkout')  # I renamed this to be simple
 @login_required
-def create_checkout_session():
+def checkout():
     try:
         checkout_session = stripe.checkout.Session.create(
             customer_email=current_user.email,
@@ -316,7 +316,8 @@ def create_checkout_session():
         )
         return redirect(checkout_session.url, code=303)
     except Exception as e:
-        return str(e)
+        print(f"Stripe Error: {e}")
+        return f"Error connecting to Stripe: {str(e)}", 500
 
 
 @app.route('/webhook', methods=['POST'])
