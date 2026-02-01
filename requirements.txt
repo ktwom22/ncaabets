@@ -13,3 +13,4 @@ Flask-Login
 psycopg2-binary
 werkzeug
 flask-migrate
+stripe
