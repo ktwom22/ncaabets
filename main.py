@@ -353,10 +353,6 @@ def api_updates():
     return jsonify(get_live_data())
 
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
 
 @app.route('/logout')
 @login_required
