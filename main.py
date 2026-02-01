@@ -46,6 +46,8 @@ class User(UserMixin, db.Model):
     is_premium = db.Column(db.Boolean, default=False)
     stripe_id = db.Column(db.String(100))
 
+with app.app_context():
+    db.create_all()
 
 @login_manager.user_loader
 def load_user(user_id):
