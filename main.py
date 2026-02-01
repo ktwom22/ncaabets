@@ -46,12 +46,9 @@ class User(UserMixin, db.Model):
     is_premium = db.Column(db.Boolean, default=False)
     stripe_id = db.Column(db.String(100))
 
-with app.app_context():
-    db.create_all()
 
 @login_manager.user_loader
 def load_user(user_id):
-    # Fixed LegacyAPIWarning: Using modern SQLAlchemy 2.0 syntax
     return db.session.get(User, int(user_id))
 
 
@@ -62,7 +59,7 @@ SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 
-# --- HELPERS ---
+# --- HELPERS (STAYED SAME) ---
 def get_gspread_client():
     try:
         creds_json = os.environ.get('GOOGLE_CREDS')
@@ -167,22 +164,19 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
         print(f"Logging Failed: {e}")
 
 
-# --- ROUTES ---
-
-# FIX 404: Added /api/updates for live score polling
-@app.route('/api/updates')
-def api_updates():
-    live_map = get_live_data()
-    # Return a clean version of the live data for the JS frontend
-    return jsonify(live_map)
+# --- UPDATED ROUTES ---
 
 @app.route('/')
 def index():
-    is_premium = (current_user.is_authenticated and current_user.is_premium) or (
-                request.args.get('key') == 'pro_access')
+    # Detect if user is premium via Login or the Master Key
+    is_premium = False
+    if current_user.is_authenticated:
+        is_premium = current_user.is_premium
+    if request.args.get('key') == 'pro_access':
+        is_premium = True
+
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
-
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
     try:
@@ -220,7 +214,7 @@ def index():
                                                            "s_home": 0}))
         eid = clean_id(ld.get('id', '0'))
 
-        # SELECTION LOGIC: Frozens picks from Archive
+        # Data processing logic...
         if eid != "0" and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick = str(hist.get('Pick', 'N/A'))
@@ -238,7 +232,6 @@ def index():
             pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
             sos_a, sos_h = clean_val(row.get('SOS Away', 150)), clean_val(row.get('SOS Home', 150))
             fd_spread = clean_val(row.get('FD Spread'))
-
             proj_l = round(((pa * (1 + (175 - sos_a) / 500)) + pgh) / 2, 1)
             proj_r = round(((ph * (1 + (175 - sos_h) / 500)) + pga) / 2 + 3.2, 1)
             edge = fd_spread - (proj_l - proj_r)
@@ -246,6 +239,7 @@ def index():
             abs_edge = abs(edge)
             stats = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh, 'sos_a': sos_a, 'sos_h': sos_h}
 
+        # Pack the game data. Note: 'is_premium' determines if the user sees LOCKED or actual data
         game_obj = {
             'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
@@ -259,12 +253,10 @@ def index():
             'is_live': ld.get('state') == 'in', 'last_plays': ld.get('plays', []),
             'Action': "PLAY" if abs_edge >= 4.5 else "FADE",
             'Rec': "🔥 AUTO-PLAY" if abs_edge >= 8.5 else "✅ STRONG" if abs_edge >= 5.0 else "⚠️ LOW",
-            'stats': stats, 'is_premium_card': is_premium
+            'stats': stats, 'archive_ids': list(archive_data_map.keys())
         }
-
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
-
         all_games.append(game_obj)
 
     return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
@@ -277,12 +269,19 @@ def signup():
         email, pw = request.form.get('email').lower(), request.form.get('password')
         if db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none():
             flash("Email already exists")
-            return redirect(url_for('signup'))
+            return redirect(url_for('login'))
+
+        # Create user
         u = User(email=email, password=generate_password_hash(pw, method='pbkdf2:sha256'))
         db.session.add(u)
         db.session.commit()
+
+        # LOG IN THE USER IMMEDIATELY
         login_user(u)
-        return redirect(url_for('index'))
+
+        # REDIRECT DIRECTLY TO STRIPE
+        return redirect(url_for('create_checkout_session'))
+
     return render_template('subscribe.html')
 
 
@@ -292,24 +291,15 @@ def login():
         u = db.session.execute(select(User).filter_by(email=request.form.get('email').lower())).scalar_one_or_none()
         if u and check_password_hash(u.password, request.form.get('password')):
             login_user(u)
-            return redirect(url_for('index'))
+            # If they are already premium, go to index. If not, go to subscribe.
+            if u.is_premium:
+                return redirect(url_for('index'))
+            else:
+                return redirect(url_for('create_checkout_session'))
     return render_template('login.html')
 
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-# FIX 404: Added GET support and clearer logic for /subscribe
-@app.route('/subscribe', methods=['GET', 'POST'])
-@login_required
-def subscribe():
-    if request.method == 'POST':
-        return redirect(url_for('create_checkout_session'))
-    return render_template('subscribe.html')
-
-@app.route('/create-checkout-session', methods=['POST', 'GET']) # GET added for simple redirects
+@app.route('/create-checkout-session', methods=['POST', 'GET'])
 @login_required
 def create_checkout_session():
     try:
@@ -317,11 +307,11 @@ def create_checkout_session():
             customer_email=current_user.email,
             payment_method_types=['card'],
             line_items=[{
-                'price': os.environ.get('STRIPE_PRICE_ID'), # Use env var for Price ID
+                'price': os.environ.get('STRIPE_PRICE_ID'),
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url=url_for('index', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
+            success_url=url_for('index', _external=True) + '?status=success',
             cancel_url=url_for('index', _external=True),
         )
         return redirect(checkout_session.url, code=303)
@@ -334,10 +324,9 @@ def stripe_webhook():
     payload = request.data
     sig_header = request.headers.get('Stripe-Signature')
     endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
-
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-    except Exception as e:
+    except:
         return jsonify(success=False), 400
 
     if event['type'] == 'checkout.session.completed':
@@ -347,9 +336,19 @@ def stripe_webhook():
         if user:
             user.is_premium = True
             db.session.commit()
-            print(f"User {user_email} upgraded to Premium!")
-
     return jsonify(success=True)
+
+
+@app.route('/api/updates')
+def api_updates():
+    return jsonify(get_live_data())
+
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     with app.app_context():
