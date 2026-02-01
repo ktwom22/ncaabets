@@ -264,44 +264,52 @@ def index():
 
 
 @app.route('/signup', methods=['GET', 'POST'])
+@app.route('/subscribe', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        email, pw = request.form.get('email').lower(), request.form.get('password')
-        if db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none():
-            flash("Email already exists")
+        email = request.form.get('email').lower()
+        pw = request.form.get('password')
+
+        # Check if user exists
+        existing_user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
+        if existing_user:
+            flash("Email already exists. Please login.")
             return redirect(url_for('login'))
 
-        # Create and save user
+        # Create user
         u = User(email=email, password=generate_password_hash(pw, method='pbkdf2:sha256'))
         db.session.add(u)
         db.session.commit()
 
-        # Log them in so current_user is populated
+        # Log in the user session
         login_user(u)
 
-        # Redirect to the checkout function
-        return redirect(url_for('checkout'))
+        # Send them to the checkout function below
+        return redirect(url_for('create_checkout_session'))
 
-    # If they just visit /signup, show them the subscribe/signup page
+    # Show the signup page for GET requests
     return render_template('subscribe.html')
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = db.session.execute(select(User).filter_by(email=request.form.get('email').lower())).scalar_one_or_none()
-        if u and check_password_hash(u.password, request.form.get('password')):
+        email = request.form.get('email').lower()
+        pw = request.form.get('password')
+        u = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
+
+        if u and check_password_hash(u.password, pw):
             login_user(u)
-            if u.is_premium:
-                return redirect(url_for('index'))
-            return redirect(url_for('checkout'))
-        flash("Invalid login credentials")
+            # If they paid, go to home. If not, go to pay.
+            return redirect(url_for('index') if u.is_premium else url_for('create_checkout_session'))
+
+        flash("Invalid email or password.")
     return render_template('login.html')
 
 
-@app.route('/checkout')  # I renamed this to be simple
+@app.route('/create-checkout-session')
 @login_required
-def checkout():
+def create_checkout_session():
     try:
         checkout_session = stripe.checkout.Session.create(
             customer_email=current_user.email,
@@ -317,7 +325,7 @@ def checkout():
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         print(f"Stripe Error: {e}")
-        return f"Error connecting to Stripe: {str(e)}", 500
+        return f"Stripe configuration error: {str(e)}", 500
 
 
 @app.route('/webhook', methods=['POST'])
