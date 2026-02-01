@@ -358,6 +358,30 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email').lower()
+        user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
+
+        if user:
+            # Here is where you would normally send an email.
+            # For now, we will flash a message.
+            flash("If that account exists, a reset link has been sent.")
+        else:
+            # We use the same message for security (so people can't fish for emails)
+            flash("If that account exists, a reset link has been sent.")
+        return redirect(url_for('login'))
+
+    return render_template('forgot_password.html')
+
 
 if __name__ == '__main__':
     with app.app_context():

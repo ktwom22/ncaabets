@@ -26,6 +26,9 @@
                 <label class="block text-sm font-medium mb-1">Password</label>
                 <input type="password" name="password" required class="w-full p-3 rounded bg-slate-700 border border-slate-600 focus:border-blue-500 outline-none">
             </div>
+            <div class="flex justify-end mb-4">
+                <a href="{{ url_for('forgot_password') }}" class="text-xs text-blue-400 hover:underline">Forgot password?</a>
+            </div>
             <button type="submit" class="w-full bg-green-600 hover:bg-green-500 p-3 rounded-lg font-bold transition">Login</button>
         </form>
         <p class="mt-4 text-center text-slate-400 text-sm">
