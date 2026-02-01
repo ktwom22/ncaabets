@@ -124,6 +124,12 @@
 
     {% set master_key = "pro_access" %}
     {% set has_key = request.args.get('key') == master_key %}
+    <nav class="flex justify-end p-4 bg-slate-800 border-b border-slate-700">
+    <a href="{{ url_for('logout') }}"
+       class="text-sm font-medium text-slate-300 hover:text-red-400 transition">
+       Logout
+    </a>
+    </nav>
 
     <nav class="navbar border-bottom p-3 sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
