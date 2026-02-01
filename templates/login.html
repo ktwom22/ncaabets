@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Pro Access</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen">
+    <div class="bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-slate-700">
+        <h2 class="text-3xl font-bold mb-6 text-center text-green-400">Member Login</h2>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for message in messages %}
+              <div class="bg-red-500/20 border border-red-500 text-red-200 p-3 rounded mb-4 text-sm">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Email</label>
+                <input type="email" name="email" required class="w-full p-3 rounded bg-slate-700 border border-slate-600 focus:border-blue-500 outline-none">
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-1">Password</label>
+                <input type="password" name="password" required class="w-full p-3 rounded bg-slate-700 border border-slate-600 focus:border-blue-500 outline-none">
+            </div>
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-500 p-3 rounded-lg font-bold transition">Login</button>
+        </form>
+        <p class="mt-4 text-center text-slate-400 text-sm">
+            Need an account? <a href="{{ url_for('signup') }}" class="text-green-400 hover:underline">Sign Up</a>
+        </p>
+    </div>
+</body>
+</html>

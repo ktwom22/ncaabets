@@ -8,3 +8,8 @@ google-auth-httplib2
 oauth2client
 gunicorn
 pytz
+Flask-SQLAlchemy
+Flask-Login
+psycopg2-binary
+werkzeug
+flask-migrate

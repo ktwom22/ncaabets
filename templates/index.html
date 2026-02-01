@@ -8,253 +8,334 @@
       gtag('js', new Date());
       gtag('config', 'G-VGV5RCKBP4');
     </script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edge Engine Pro</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         :root {
-            --bg: #0d1117; --card: #161b22; --border: #30363d;
-            --accent: #58a6ff; --text: #f0f6fc; --success: #238636;
-            --danger: #da3633; --warning: #d29922; --locked: #8b949e;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --border: #dcdfe4;
+            --accent: #0056b3;
+            --text: #1c1e21;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #f39c12;
+            --locked: #6c757d;
+            --ticker-bg: #1a1a1a;
+            --espn-red: #cc0000;
+            --sub-bg: #f8f9fa;
         }
 
         body {
             background-color: var(--bg); color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow-x: hidden;
+            padding-bottom: 60px;
         }
 
-        /* Sidebar/Analytics */
-        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: var(--card); transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 0 0 40px #000; }
+        /* --- PAYWALL STYLES --- */
+        .paywall-container { position: relative; overflow: hidden; }
+        .content-blurred { filter: blur(12px); pointer-events: none; user-select: none; transition: filter 0.3s; }
+        .paywall-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.4);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; text-align: center; padding: 20px;
+        }
+        .unlock-btn {
+            background: var(--accent); color: white; border: none;
+            padding: 12px 25px; border-radius: 8px; font-weight: 800;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: transform 0.2s;
+            text-decoration: none;
+        }
+        .unlock-btn:hover { transform: scale(1.05); color: white; }
 
-        /* Card UI */
+        /* --- TICKER STYLES --- */
+        .ticker-wrap {
+            width: 100%; overflow: hidden; background-color: var(--ticker-bg);
+            border-bottom: 1px solid var(--border); height: 45px;
+            display: flex; align-items: center; position: sticky; top: 65px; z-index: 999;
+        }
+        .ticker { display: flex; white-space: nowrap; animation: ticker-move 90s linear infinite; color: #fff; }
+        .ticker:hover { animation-play-state: paused; }
+        @keyframes ticker-move { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .ticker-link { text-decoration: none; color: inherit; display: flex; align-items: center; transition: background 0.2s; }
+        .ticker-link:hover { background: rgba(255, 255, 255, 0.1); }
+        .ticker-item { display: inline-flex; align-items: center; padding: 0 40px; border-right: 1px solid #444; height: 45px; }
+        .espn-tag { font-size: 0.65rem; font-weight: 900; color: var(--espn-red); letter-spacing: 1px; margin-right: 10px; }
+        .tick-logo { width: 22px; height: 22px; margin: 0 8px; object-fit: contain; }
+        .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; font-size: 1rem; }
+        .tick-abbr { font-weight: 800; font-size: 0.75rem; color: #ccc; text-transform: uppercase; }
+
+        /* --- CARD STYLES --- */
         .game-container { perspective: 1200px; height: 520px; margin-bottom: 20px; cursor: pointer; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
-        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-        .card-back { transform: rotateY(180deg); padding: 15px; background: #010409; }
+        .card-front, .card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
-        /* Locked State */
-        .is-locked .card-front { border: 1px solid var(--warning); border-style: dashed; }
-        .lock-overlay { position: absolute; top: 10px; right: 10px; z-index: 10; color: var(--warning); font-size: 0.75rem; font-weight: 900; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--warning); }
+        .lock-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.6rem; font-weight: bold; z-index: 10; letter-spacing: 1px; }
 
-        /* Logos & Front Display */
-        .t-logo { width: 85px; height: 85px; object-fit: contain; background: rgba(255,255,255,0.03); border-radius: 10px; display: block; margin: 0 auto; }
-        .proj-val { font-size: 2.2rem; font-weight: 900; color: #fff; display: block; line-height: 1; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 2rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; }
+        .card-back { transform: rotateY(180deg); padding: 0; background: #fff; }
+        .back-header { background: var(--accent); color: white; padding: 15px; font-weight: 800; font-size: 0.8rem; letter-spacing: 1px; }
 
-        /* BIGGER STATS BACK OF CARD */
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 5px; }
-        .stat-column { background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 12px; border: 1px solid var(--border); }
-        .stat-column h4 { font-size: 0.85rem; color: var(--accent); font-weight: 900; border-bottom: 2px solid #333; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex-grow: 1; }
+        .stat-column { padding: 15px; border-right: 1px solid var(--border); }
+        .stat-column:last-child { border-right: none; }
+        .stat-column h4 { font-size: 0.85rem; font-weight: 800; margin-bottom: 15px; color: var(--text); border-bottom: 2px solid var(--bg); padding-bottom: 5px; }
 
-        .stat-item { margin-bottom: 10px; }
-        .stat-label { display: block; font-size: 0.6rem; color: #8b949e; text-transform: uppercase; font-weight: 700; }
-        .stat-value { font-size: 1.1rem; font-weight: 800; color: #fff; display: block; }
-        .stat-value.rank { color: var(--warning); font-size: 1.2rem; }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.75rem; }
+        .stat-label { color: var(--locked); font-weight: 600; }
+        .stat-value { font-weight: 800; color: var(--text); }
+        .stat-value.rank { color: var(--accent); }
 
-        /* UI Elements */
-        .badge-action { font-size: 0.8rem; font-weight: 900; padding: 5px 10px; border-radius: 4px; text-transform: uppercase; }
-        .bg-play { background: var(--success); color: #fff; box-shadow: 0 0 15px rgba(35, 134, 54, 0.3); }
-        .bg-fade { background: #30363d; color: #8b949e; }
-        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #238636, #144620); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        /* --- SIDEBAR STYLES --- */
+        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 10px 0 20px rgba(0,0,0,0.1); }
+        .sidebar-content { padding: 20px; }
+        .sidebar-header { border-bottom: 2px solid var(--bg); padding-bottom: 15px; margin-bottom: 20px; }
+        .stat-card-mini { background: var(--sub-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); }
+
+        .news-sidebar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: sticky; top: 130px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .news-item { display: block; text-decoration: none; color: inherit; padding-bottom: 15px; border-bottom: 1px solid var(--bg); margin-bottom: 15px; }
+        .news-title { font-size: 0.85rem; font-weight: 700; display: block; }
+        .news-meta { font-size: 0.7rem; color: var(--locked); }
+
+        .t-logo { width: 75px; height: 75px; object-fit: contain; background: rgba(0,0,0,0.03); border-radius: 10px; display: block; margin: 0 auto; }
+        .proj-val { font-size: 2rem; font-weight: 900; color: var(--text); display: block; line-height: 1; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
+
+        .bg-play { background: var(--success); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
+        .bg-fade { background: var(--border); color: var(--text); padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
+
+        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        .trend-row { display: flex; gap: 8px; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
-        .res-circle { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.75rem; color: white; }
+        .navbar { background-color: #ffffff !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
 
-    <nav class="navbar border-bottom border-secondary p-3 bg-dark sticky-top">
+    {% set master_key = "pro_access" %}
+    {% set has_key = request.args.get('key') == master_key %}
+
+    <nav class="navbar border-bottom p-3 sticky-top">
         <div class="container d-flex justify-content-between align-items-center">
-            <span class="fw-bold tracking-tight">EDGE ENGINE <span class="text-info">PRO</span></span>
-            <div>
-                <small id="sync-timer" class="text-muted me-3" style="font-size: 0.7rem;">Syncing...</small>
-                <a href="/logout" class="btn btn-sm btn-outline-secondary" style="font-size: 0.65rem;">LOGOUT</a>
+            <span class="fw-bold tracking-tight text-dark">EDGE ENGINE <span class="text-info" style="color:var(--accent)!important">PRO</span></span>
+            <div class="text-end">
+                <small id="sync-timer" class="text-muted d-block" style="font-size: 0.6rem;">INITIALIZING...</small>
+                {% if has_key %}<span class="badge bg-success mb-1" style="font-size:0.5rem">ADMIN ACCESS</span>{% endif %}
+                <a href="/" class="text-decoration-none text-danger fw-bold" style="font-size: 0.65rem;">REFRESH DATA</a>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-4 pb-5">
-        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    <div class="ticker-wrap">
+        <div class="ticker">
+            <div class="ticker-item"><span class="espn-tag">LIVE VIA ESPN</span></div>
             {% for g in games %}
-            {% set is_locked = g.ESPN_ID in archive_ids or g.is_live %}
-            <div class="col" id="game-{{ g.ESPN_ID }}">
-                <div class="game-container {% if is_locked %}is-locked{% endif %}">
-                    <div class="card-inner shadow-lg" onclick="this.parentElement.classList.toggle('is-flipped')">
+            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="ticker-link">
+                <div class="ticker-item">
+                    <img src="{{ g.Left_Logo }}" class="tick-logo">
+                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[0][:3] }}</span>
+                    <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
+                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[1][:3] }}</span>
+                    <img src="{{ g.Right_Logo }}" class="tick-logo">
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
 
-                        <div class="card-front">
-                            {% if is_locked %}
-                            <div class="lock-overlay">🔒 LOCKED</div>
+    <div class="container-fluid mt-4 px-lg-5">
+        <div class="row">
+            <div class="col-lg-9">
+                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+                    {% for g in games %}
+
+                    {% set is_locked = g.ESPN_ID in archive_ids %}
+                    {# Paywall is ON only if: User isn't premium AND they didn't provide the Master Key #}
+                    {% set show_paywall = (not is_premium) and (not has_key) %}
+
+                    <div class="col" id="game-{{ g.ESPN_ID }}">
+                        <div class="game-container paywall-container">
+
+                            {% if show_paywall %}
+                            <div class="paywall-overlay">
+                                <div class="mb-2">🔒</div>
+                                <h6 class="fw-bold text-dark mb-3">PRO PICK LOCKED</h6>
+                                <a href="/subscribe" class="unlock-btn">UNLOCK ALL PICKS</a>
+                                <small class="mt-2 text-muted" style="font-size: 0.6rem;">Requires Active Subscription</small>
+                            </div>
                             {% endif %}
 
-                            <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="badge-action {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                    <span class="ms-2 fw-bold text-info" style="font-size: 0.9rem;">{{ g.Rec }}</span>
-                                </div>
-                                {% if g.is_live %}
-                                <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
-                                {% endif %}
-                            </div>
-
-                            <div class="text-center p-3">
-                                <div class="mb-4">
-                                    <small class="text-muted d-block mb-1" style="font-size: 0.65rem; letter-spacing: 1px; text-transform: uppercase;">
-                                        {{ 'Locked Selection' if is_locked else 'Current Selection' }}
-                                    </small>
-                                    <div class="fw-bold text-white" style="font-size: 1.5rem;">
-                                        {{ g.Pick }} <span class="text-warning">{{ g.Pick_Spread }}</span>
-                                    </div>
-                                </div>
-
-                                <div class="d-flex justify-content-around align-items-center mb-2">
-                                    <div class="text-center">
-                                        <small class="text-muted d-block mb-2" style="font-size: 0.6rem;">AWAY</small>
-                                        <img src="{{ g.Left_Logo }}" class="t-logo mb-2" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png'">
-                                        <span class="proj-val">{{ g.Left_Proj }}</span>
-                                    </div>
-                                    <div class="px-2">
-                                        <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
-                                        <small class="text-muted d-block mt-1" style="font-size: 0.6rem; font-weight: bold;">LIVE SCORE</small>
-                                    </div>
-                                    <div class="text-center">
-                                        <small class="text-muted d-block mb-2" style="font-size: 0.6rem;">HOME</small>
-                                        <img src="{{ g.Right_Logo }}" class="t-logo mb-2" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/default-ad.png'">
-                                        <span class="proj-val">{{ g.Right_Proj }}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="row g-0 border-top border-secondary text-center p-3 mt-auto bg-dark">
-                                <div class="col-6 border-end border-secondary">
-                                    <small class="text-muted d-block" style="font-size: 0.65rem;">GAME STATUS</small>
-                                    <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
-                                </div>
-                                <div class="col-6">
-                                    <small class="text-muted d-block" style="font-size: 0.65rem;">GAP ADVANTAGE</small>
-                                    <b class="text-warning" style="font-size: 1.1rem;">+{{ g.Edge }} PTS</b>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="card-back">
-                            <h6 class="text-info border-bottom border-secondary pb-2 mb-2" style="letter-spacing: 2px; font-size: 0.75rem; font-weight: 800;">ADVANCED ENGINE METRICS</h6>
-
-                            <div class="stats-grid">
-                                <div class="stat-column">
-                                    <h4>{{ g.Matchup.split('@')[0] }}</h4>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Power Rank</span>
-                                        <span class="stat-value rank">#{{ g.ra }}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Offense (PPG)</span>
-                                        <span class="stat-value text-info">{{ g.pa }}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Defense (PPGA)</span>
-                                        <span class="stat-value">{{ g.pga }}</span>
-                                    </div>
-                                </div>
-
-                                <div class="stat-column">
-                                    <h4>{{ g.Matchup.split('@')[1] }}</h4>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Power Rank</span>
-                                        <span class="stat-value rank">#{{ g.rh }}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Offense (PPG)</span>
-                                        <span class="stat-value text-info">{{ g.ph }}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Defense (PPGA)</span>
-                                        <span class="stat-value">{{ g.pgh }}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mt-3 p-3 bg-dark rounded border border-secondary text-center">
-                                <small class="text-muted d-block mb-1" style="font-size: 0.65rem; text-transform: uppercase;">Engine Edge Delta</small>
-                                <span class="text-warning fw-bold" style="font-size: 1.2rem;">{{ g.Edge }} POINT EDGE</span>
-                            </div>
-
-                            <div class="mt-auto pt-2 border-top border-secondary text-center">
-                                <small class="text-secondary" style="font-size: 0.6rem; font-style: italic;">
+                            <div class="card-inner shadow-lg {% if show_paywall %}content-blurred{% endif %}">
+                                <div class="card-front" {% if not show_paywall %}onclick="this.parentElement.parentElement.classList.toggle('is-flipped')"{% endif %}>
                                     {% if is_locked %}
-                                    LOCKED: Stats represent data at time of tip-off.
-                                    {% else %}
-                                    LIVE: Data refreshing every 30 seconds.
+                                    <div class="lock-badge">🔒 PICK LOCKED</div>
                                     {% endif %}
-                                </small>
+                                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
+                                        <div>
+                                            <span class="badge-action {% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
+                                            <span class="ms-2 fw-bold" style="font-size: 0.9rem; color:var(--accent)">{{ g.Rec }}</span>
+                                        </div>
+                                        {% if g.is_live %}
+                                        <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="text-center p-4">
+                                        <div class="mb-3">
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase;">SELECTION</small>
+                                            <div class="fw-bold text-dark" style="font-size: 1.4rem;">
+                                                {% if show_paywall %} LOCKED {% else %} {{ g.Pick }} {% endif %}
+                                                <span class="text-warning">{% if show_paywall %} (XX) {% else %} {{ g.Pick_Spread }} {% endif %}</span>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-around align-items-center">
+                                            <div class="text-center" style="width: 30%;">
+                                                <img src="{{ g.Left_Logo }}" class="t-logo mb-2">
+                                                <span class="proj-val">{% if show_paywall %} -- {% else %} {{ g.Left_Proj }} {% endif %}</span>
+                                            </div>
+                                            <div class="px-2 text-center" style="width: 40%;">
+                                                <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
+                                                <small class="text-muted d-block" style="font-size: 0.55rem; font-weight: bold;">LIVE SCORE</small>
+                                            </div>
+                                            <div class="text-center" style="width: 30%;">
+                                                <img src="{{ g.Right_Logo }}" class="t-logo mb-2">
+                                                <span class="proj-val">{% if show_paywall %} -- {% else %} {{ g.Right_Proj }} {% endif %}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-0 border-top text-center p-3 mt-auto" style="background: var(--sub-bg);">
+                                        <div class="col-6 border-end">
+                                            <small class="text-muted d-block" style="font-size: 0.65rem;">STATUS</small>
+                                            <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
+                                        </div>
+                                        <div class="col-6">
+                                            <small class="text-muted d-block" style="font-size: 0.65rem;">EDGE</small>
+                                            <b class="text-success" style="font-size: 1.1rem;">{% if show_paywall %} +?.? {% else %} +{{ g.Edge }} {% endif %} PTS</b>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-back" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
+                                    <div class="back-header text-center">DETAILED SCOUTING METRICS</div>
+                                    <div class="stats-grid">
+                                        <div class="stat-column">
+                                            <h4>{{ g.Matchup.split('@')[0]|truncate(12) }}</h4>
+                                            <div class="stat-row"><span class="stat-label">Power Rank</span><span class="stat-value rank">#{{ g.stats.ra }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">PPG Avg</span><span class="stat-value">{{ g.stats.pa }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sos_a }}</span></div>
+                                        </div>
+                                        <div class="stat-column">
+                                            <h4>{{ g.Matchup.split('@')[1]|truncate(12) }}</h4>
+                                            <div class="stat-row"><span class="stat-label">Power Rank</span><span class="stat-value rank">#{{ g.stats.rh }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">PPG Avg</span><span class="stat-value">{{ g.stats.ph }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sos_h }}</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="p-3 border-top bg-light text-center">
+                                        <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold w-100">FULL ESPN BOX SCORE</a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
 
+            <div class="col-lg-3 d-none d-lg-block">
+                <div class="news-sidebar">
+                    <h6 class="fw-bold mb-3 d-flex align-items-center" style="letter-spacing: 2px;">
+                        <span class="espn-tag me-2">●</span> CBB INSIDER
+                    </h6>
+                    <a href="#" class="news-item"><span class="news-title">Predicting the Bubble: Who's safe?</span><span class="news-meta">ESPN • 1h ago</span></a>
+                    <a href="#" class="news-item"><span class="news-title">Power Rankings: Big 12 Dominance.</span><span class="news-meta">ESPN • 4h ago</span></a>
+                    <div class="stat-card-mini mt-3" style="background: var(--accent); color: white;">
+                        <small class="d-block opacity-75">LIVE ENGINE WIN RATE</small>
+                        <span class="h3 fw-bold">{{ stats.PCT }}%</span>
                     </div>
                 </div>
             </div>
-            {% endfor %}
         </div>
     </div>
+
+    <footer class="mt-5 py-5 border-top bg-white">
+        <div class="container text-center">
+            <div class="mb-3">
+                <span class="fw-bold tracking-tight text-dark" style="font-size: 0.9rem;">EDGE ENGINE <span class="text-info" style="color:var(--accent)!important">PRO</span></span>
+            </div>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <p class="text-muted mb-2" style="font-size: 0.75rem; line-height: 1.6;">
+                        <strong>RESPONSIBLE GAMBLING:</strong> All projections and "Edge" metrics are for informational and entertainment purposes only. Past performance is not indicative of future results. Please bet responsibly and within your means.
+                    </p>
+                    <div class="d-flex justify-content-center align-items-center gap-3">
+                        <span class="badge border text-dark fw-bold" style="font-size: 0.7rem; border-color: #ccc !important;">21+ ONLY</span>
+                        <p class="mb-0 text-dark fw-bold" style="font-size: 0.75rem;">
+                            GAMBLING PROBLEM? CALL <span class="text-danger">1-800-GAMBLER</span>
+                        </p>
+                    </div>
+                    <small class="d-block mt-4 text-uppercase text-muted" style="font-size: 0.55rem; letter-spacing: 2px;">
+                        © 2026 Edge Engine Analytics • Data Synced via ESPN API
+                    </small>
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <div id="stats-sidebar" class="slider">
-    <div class="p-4 border-bottom bg-dark d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold">ANALYTICS</h5>
-        <button class="btn-close btn-close-white" onclick="toggleS('stats-sidebar')"></button>
-    </div>
+        <div class="sidebar-content">
+            <div class="sidebar-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0 fw-bold">PERFORMANCE</h4>
+                <button onclick="toggleS('stats-sidebar')" class="btn-close"></button>
+            </div>
 
-    <div class="p-4">
-        <div class="text-center mb-5">
-            <small class="text-muted d-block">SEASON WIN RATE</small>
-            <h1 class="display-2 fw-bold text-info">{{ stats.PCT }}%</h1>
-            <div class="row mt-3 border-top border-bottom border-secondary py-3 mx-0">
-                <div class="col-6 border-end border-secondary">
-                    <h3 class="mb-0 fw-bold">{{ stats.W }}</h3>
-                    <small class="text-success">WINS</small>
+            <div class="row g-2 mb-4">
+                <div class="col-6">
+                    <div class="stat-card-mini text-center">
+                        <small class="text-muted d-block">WINS</small>
+                        <span class="fw-bold h4 text-success">{{ stats.W }}</span>
+                    </div>
                 </div>
                 <div class="col-6">
-                    <h3 class="mb-0 fw-bold">{{ stats.L }}</h3>
-                    <small class="text-danger">LOSSES</small>
+                    <div class="stat-card-mini text-center">
+                        <small class="text-muted d-block">LOSSES</small>
+                        <span class="fw-bold h4 text-danger">{{ stats.L }}</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <h6 class="text-muted text-uppercase mb-3" style="font-size: 0.7rem; letter-spacing: 2px; font-weight: 800;">Recent Game History</h6>
-        <div class="list-group list-group-flush border-top border-secondary">
-            {% for result in last_10 %}
-            <div class="list-group-item bg-transparent border-secondary px-0 py-3">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center">
-                        <div class="res-circle {{ 'bg-success' if result.Result.upper() == 'WIN' else 'bg-danger' }} me-3" style="width: 35px; height: 35px; min-width: 35px;">
-                            {{ result.Result[0].upper() }}
-                        </div>
-                        <div>
-                            <div class="fw-bold text-white" style="font-size: 0.85rem;">{{ result.Matchup }}</div>
-                            <small class="text-muted" style="font-size: 0.7rem;">Pick: {{ result.Pick }} {{ result.Spread }}</small>
-                        </div>
-                    </div>
-                    <div class="text-end">
-                        <span class="badge {% if result.Result.upper() == 'WIN' %}text-success{% else %}text-danger{% endif %}" style="font-size: 0.7rem; border: 1px solid currentColor;">
-                            {{ result.Final_Score if result.Final_Score else 'FINAL' }}
-                        </span>
-                    </div>
+            <h6 class="fw-bold text-muted small mb-3">LAST 10 RESULTS</h6>
+            {% for g in last_10 %}
+            <div class="stat-card-mini d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="fw-bold" style="font-size: 0.75rem;">{{ g.Matchup }}</div>
+                    <small class="text-muted">{{ g.Pick }} {{ g.Pick_Spread }}</small>
                 </div>
+                <span class="badge {% if g.Result == 'WIN' %}bg-success{% elif g.Result == 'LOSS' %}bg-danger{% else %}bg-secondary{% endif %}">
+                    {{ g.Result[0] }}
+                </span>
             </div>
             {% endfor %}
         </div>
     </div>
-</div>
 
     <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
 
     <script>
         function toggleS(id) {
             const s = document.getElementById(id);
-            const w = window.innerWidth < 600 ? '100%' : '320px';
+            const w = window.innerWidth < 600 ? '100%' : '350px';
             s.style.width = (s.style.width === w) ? '0' : w;
         }
 
@@ -264,20 +345,24 @@
                 const data = await res.json();
                 for (const id in data) {
                     const scoreEl = document.getElementById(`score-${id}`);
+                    const tickEl = document.getElementById(`tick-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
-                    if (scoreEl && scoreEl.textContent !== data[id].score) {
-                        scoreEl.textContent = data[id].score;
-                        scoreEl.style.transition = "color 0.5s";
-                        scoreEl.style.color = "#fff";
-                        setTimeout(() => scoreEl.style.color = "var(--accent)", 2000);
+
+                    if (scoreEl && data[id].score) {
+                        if (scoreEl.textContent !== data[id].score) {
+                            scoreEl.textContent = data[id].score;
+                            scoreEl.style.color = "#000";
+                            setTimeout(() => scoreEl.style.color = "var(--accent)", 2000);
+                        }
                     }
-                    if (statusEl) {
+                    if (tickEl && data[id].score) tickEl.textContent = data[id].score;
+                    if (statusEl && data[id].status) {
                         const pulseIcon = data[id].is_live ? '<span class="pulse">●</span> ' : '';
                         statusEl.innerHTML = pulseIcon + data[id].status;
                     }
                 }
-                document.getElementById('sync-timer').innerText = "Sync: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            } catch (e) { console.log("Update failed"); }
+                document.getElementById('sync-timer').innerText = "ENGINE ACTIVE: " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } catch (e) { console.log("Sync Error"); }
         }
 
         setInterval(updateScores, 30000);
