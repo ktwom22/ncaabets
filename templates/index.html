@@ -41,7 +41,6 @@
 
         /* --- PAYWALL & BLUR --- */
         .paywall-container { position: relative; overflow: hidden; }
-        /* Only blurs if is_premium is False */
         .content-blurred { filter: blur(14px); pointer-events: none; user-select: none; }
         .paywall-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -87,7 +86,6 @@
 
         /* --- BADGES --- */
         .lock-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.85); color: #ffd700; padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900; z-index: 10; letter-spacing: 1px; border: 1px solid #ffd700; }
-        .tier-badge { position: absolute; top: 10px; right: 10px; background: var(--success); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900; z-index: 10; }
         .bg-play { background: var(--success); color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
         .bg-fade { background: var(--border); color: var(--text); padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
 
@@ -159,14 +157,17 @@
             <div class="col-lg-9">
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
                     {% for g in games %}
-                    {# Logic to determine if game is started/stationary #}
-                    {% set is_started = g.is_live or g.status == 'FINAL' %}
+                        {% set is_started = g.is_live or g.status == 'FINAL' %}
+
+                        {# LOGIC: If both ranks are > 100, allow public access #}
+                        {% set is_public_game = (g.stats.ra | int > 100) and (g.stats.rh | int > 100) %}
+                        {# The content is accessible if the user is premium OR if the game is public #}
+                        {% set can_see_pick = is_premium or is_public_game %}
 
                     <div class="col" id="game-{{ g.ESPN_ID }}">
                         <div class="game-container paywall-container">
 
-                            {# PAYWALL OVERLAY: Controlled by Python is_premium variable #}
-                            {% if not is_premium %}
+                            {% if not can_see_pick %}
                             <div class="paywall-overlay">
                                 <div class="mb-2" style="font-size: 1.5rem;">🔒</div>
                                 <h6 class="fw-bold text-dark mb-3">PREMIUM PICK LOCKED</h6>
@@ -175,16 +176,19 @@
                             </div>
                             {% endif %}
 
-                            <div class="card-inner shadow-sm {% if not is_premium %}content-blurred{% endif %}">
+                            <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
                                 <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
 
-                                    {# LOCK BADGE: Shows if game is locked-in from Archive #}
+                                    {# Lock remains active once game starts based on your preference #}
                                     <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
 
                                     <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
                                         <div>
                                             <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
                                             <span class="ms-2 fw-bold" style="font-size: 0.85rem; color:var(--accent)">{{ g.Rec }}</span>
+                                            {% if is_public_game and not is_premium %}
+                                                <span class="badge bg-dark ms-2" style="font-size: 0.5rem; letter-spacing: 0.5px;">PUBLIC ACCESS</span>
+                                            {% endif %}
                                         </div>
                                         <div id="heartbeat-{{ g.ESPN_ID }}">
                                             {% if g.is_live %}
@@ -264,7 +268,7 @@
                     </div>
                     <div class="mt-4">
                         <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
-                        {% for r in last_10[:3] %}
+                        {% for r in last_10[:5] %}
                         <div class="small mt-2 border-bottom pb-1">
                             <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
                             {{ r.Matchup }}
@@ -283,12 +287,15 @@
 
     <div id="stats-sidebar" class="slider">
         <div class="p-4">
-            <h4 class="fw-bold">ENGINE PERFORMANCE</h4>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold mb-0">PERFORMANCE</h4>
+                <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
+            </div>
             <div class="row g-2 my-4">
                 <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
                 <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
             </div>
-            <h6>HISTORY</h6>
+            <h6>RECENT HISTORY</h6>
             {% for g in last_10 %}
             <div class="stat-card-mini d-flex justify-content-between">
                 <small>{{ g.Matchup }}</small>

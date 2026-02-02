@@ -36,7 +36,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    is_premium = db.Column(db.Boolean, default=False)  # MUST BE TRUE TO SEE PICKS
+    is_premium = db.Column(db.Boolean, default=False)
     stripe_id = db.Column(db.String(100))
 
     def get_reset_token(self):
@@ -79,14 +79,12 @@ def get_gspread_client():
         print(f"Auth Error: {e}")
         return None
 
-
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper()
     for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "COUGARS"]:
         name = name.replace(r, "")
     return "".join(filter(str.isalnum, name))
-
 
 def clean_val(val, default=0.0):
     try:
@@ -96,14 +94,12 @@ def clean_val(val, default=0.0):
     except:
         return default
 
-
 def clean_id(val):
     try:
         if pd.isna(val) or str(val).strip() == '': return "0"
         return str(int(float(str(val).strip())))
     except:
         return str(val).split('.')[0].strip()
-
 
 def get_live_data():
     live_map = {}
@@ -118,8 +114,7 @@ def get_live_data():
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             data = {
                 "id": str(event['id']),
-                "status": "FINAL" if event['status']['type']['state'] == "post" else event['status']['type'][
-                    'shortDetail'],
+                "status": "FINAL" if event['status']['type']['state'] == "post" else event['status']['type']['shortDetail'],
                 "state": event['status']['type']['state'],
                 "s_away": int(clean_val(t_away.get('score', 0))),
                 "s_home": int(clean_val(t_home.get('score', 0))),
@@ -127,8 +122,7 @@ def get_live_data():
                 "h_team": t_home['team']['displayName'],
                 "a_logo": t_away['team'].get('logo', ''),
                 "h_logo": t_home['team'].get('logo', ''),
-                "plays": [{"clock": "LIVE", "text": p.strip()} for p in
-                          comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
+                "plays": [{"clock": "LIVE", "text": p.strip()} for p in comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
             }
             live_map[normalize(t_away['team']['displayName'])] = data
             live_map[normalize(t_home['team']['displayName'])] = data
@@ -136,7 +130,6 @@ def get_live_data():
     except Exception as e:
         print(f"Live API Error: {e}")
     return live_map
-
 
 def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     eid = str(game_data['ESPN_ID']).strip()
@@ -176,33 +169,20 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     except Exception as e:
         print(f"Logging Failed for {eid}: {e}")
 
-
 # --- CORE ROUTES ---
-
-import io
-import pytz
-import pandas as pd
-import requests
-from datetime import datetime
-from flask import render_template, request
-from flask_login import current_user
-
 
 @app.route('/')
 def index():
-    # 1. DETERMINING PREMIUM STATUS
-    # The 'LOCKED' state is controlled here.
-    is_premium = current_user.is_authenticated and current_user.is_premium
-
-    # This is your "Backdoor" to see the picks without logging in
+    # Overall Premium Status (for site-wide features)
+    global_is_premium = current_user.is_authenticated and current_user.is_premium
     if request.args.get('key') == 'pro_access':
-        is_premium = True
+        global_is_premium = True
 
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # 2. LOAD ARCHIVE (Crucial for keeping picks from changing)
+    # 1. LOAD ARCHIVE
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
@@ -210,7 +190,6 @@ def index():
             adf.columns = [c.strip() for c in adf.columns]
             for _, row in adf.iterrows():
                 archive_data_map[clean_id(row.get('ESPN_ID', '0'))] = row
-
             res_col = adf['Result'].astype(str).str.strip().str.upper()
             wins, losses = len(adf[res_col == 'WIN']), len(adf[res_col == 'LOSS'])
             if (wins + losses) > 0:
@@ -222,8 +201,8 @@ def index():
     gc = get_gspread_client()
     archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive") if gc else None
     col_p_values = archive_sheet.col_values(16) if archive_sheet else []
-
     live_map = get_live_data()
+
     try:
         df = pd.read_csv(io.StringIO(requests.get(SHEET_URL).text))
     except:
@@ -235,50 +214,44 @@ def index():
         if today_target not in g_time: continue
 
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
-        ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name),
-                                                          {"id": "0", "status": g_time, "state": "pre", "s_away": 0,
-                                                           "s_home": 0}))
+        ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {"id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0}))
         eid = clean_id(ld.get('id', '0'))
 
-        # 3. LOCK-IN LOGIC (Prioritize Archive Data)
+        # 2. LOAD DATA (Archive vs Engine)
         if eid != "0" and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Spread'))
-            proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
-                hist.get('Edge'))
-            stats = {'pa': hist.get('Away_PPG'), 'pga': hist.get('Away_PPGA'), 'ph': hist.get('Home_PPG'),
-                     'pgh': hist.get('Home_PPGA'), 'ra': hist.get('Away_Rank'), 'rh': hist.get('Home_Rank'),
-                     'sos_a': hist.get('Away_SOS'), 'sos_h': hist.get('Home_SOS')}
+            proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(hist.get('Edge'))
+            stats = {'pa': hist.get('Away_PPG'), 'pga': hist.get('Away_PPGA'), 'ph': hist.get('Home_PPG'), 'pgh': hist.get('Home_PPGA'), 'ra': hist.get('Away_Rank'), 'rh': hist.get('Home_Rank'), 'sos_a': hist.get('Away_SOS'), 'sos_h': hist.get('Home_SOS')}
             rank_gap = abs(clean_val(stats['ra']) - clean_val(stats['rh']))
         else:
-            # 4. ENGINE CALCULATION (If not in archive)
             ra, rh = clean_val(row.get('Rank Away', 150)), clean_val(row.get('Rank Home', 150))
             pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
             pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
             sos_a, sos_h = clean_val(row.get('SOS Away', 150)), clean_val(row.get('SOS Home', 150))
             fd_spread = clean_val(row.get('FD Spread'))
-
             proj_l = round(((pa * (1 + (175 - sos_a) / 1000)) + pgh) / 2, 1)
             proj_r = round(((ph * (1 + (175 - sos_h) / 1000)) + pga) / 2 + 3.2, 1)
-
-            if ra > rh:
-                proj_l -= 2.0
-            elif rh > ra:
-                proj_r -= 2.0
-
+            if ra > rh: proj_l -= 2.0
+            elif rh > ra: proj_r -= 2.0
             edge = fd_spread - (proj_l - proj_r)
             pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
             abs_edge, rank_gap = abs(edge), abs(ra - rh)
             stats = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh, 'sos_a': sos_a, 'sos_h': sos_h}
 
-        # 5. DATA PACKAGING (The visual locking happens here)
+        # 3. TIERED LOCKING LOGIC
+        # Low Tier (Free) if Edge < 12.0. High Tier requires Premium.
+        is_low_tier = abs_edge < 12.0
+        can_view = is_low_tier or global_is_premium
+
         game_obj = {
             'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
             'Raw_Pick': pick, 'Raw_Spread': p_spr_val,
-            # If is_premium is False, user sees "LOCKED" and "???"
-            'Pick': pick.upper() if is_premium else "LOCKED",
-            'Pick_Spread': f"{p_spr_val:+g}" if is_premium else "???",
+            # Logic for front-end visibility
+            'Pick': pick.upper() if can_view else "LOCKED",
+            'Pick_Spread': f"{p_spr_val:+g}" if can_view else "???",
+            'can_view': can_view, # Passed to template
             'Left_Proj': proj_l, 'Right_Proj': proj_r,
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
@@ -293,11 +266,11 @@ def index():
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
         all_games.append(game_obj)
 
-    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
-                           is_premium=is_premium)
+    return render_template('index.html', games=all_games, stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=global_is_premium)
 
 
-# --- AUTH ROUTES ---
+# --- AUTH & STRIPE ROUTES ---
+
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -306,14 +279,12 @@ def signup():
         if db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none():
             flash("Email already exists.")
             return redirect(url_for('login'))
-        # Using default scrypt for modern security
         u = User(email=email, password=generate_password_hash(pw))
         db.session.add(u)
         db.session.commit()
         login_user(u)
         return redirect(url_for('create_checkout_session'))
     return render_template('subscribe.html')
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -323,18 +294,15 @@ def login():
         u = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
         if u and check_password_hash(u.password, pw):
             login_user(u)
-            # Send to index if premium, else send to pay
             return redirect(url_for('index'))
         flash("Invalid credentials.")
     return render_template('login.html')
-
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
 
 @app.route('/create-checkout-session')
 @login_required
@@ -351,7 +319,6 @@ def create_checkout_session():
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         return f"Stripe Error: {e}", 500
-
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
@@ -370,7 +337,6 @@ def stripe_webhook():
         print(f"Webhook error: {e}")
         return jsonify(success=False), 400
     return jsonify(success=True)
-
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
