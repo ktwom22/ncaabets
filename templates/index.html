@@ -179,7 +179,7 @@
                             <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
                                 <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
 
-                                    {# Lock remains active once game starts based on your preference #}
+                                    {# Lock remains active once game starts to keep picks stationary #}
                                     <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
 
                                     <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
@@ -240,12 +240,20 @@
                                         <div class="stat-column">
                                             <h4>AWAY</h4>
                                             <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
                                             <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">L3 PPG</span><span class="stat-value">{{ g.stats.l3pa }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">PPG Def</span><span class="stat-value">{{ g.stats.pga }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">L3 PPG Def</span><span class="stat-value">{{ g.stats.l3pga }}</span></div>
                                         </div>
                                         <div class="stat-column">
                                             <h4>HOME</h4>
                                             <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
                                             <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">L3 PPG</span><span class="stat-value">{{ g.stats.l3ph }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">PPG Def</span><span class="stat-value">{{ g.stats.pgh }}</span></div>
+                                            <div class="stat-row"><span class="stat-label">L3 PPG Def</span><span class="stat-value">{{ g.stats.l3pgh }}</span></div>
                                         </div>
                                     </div>
                                     <div class="p-3 border-top bg-light text-center">
