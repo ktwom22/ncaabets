@@ -66,10 +66,26 @@ def get_gspread_client():
         return None
 
 
+# --- NEW SEO UTILITY ---
+def get_seo_metadata(top_play=None):
+    """Generates dynamic SEO tags based on the best available play."""
+    if top_play:
+        matchup = top_play['Matchup']
+        edge = top_play['Edge']
+        title = f"Lock Alert: {matchup} (+{edge} Edge) | Edge Engine Pro"
+        description = f"Today's Featured Play: {matchup}. Our engine identified a {edge} point variance. View live scouting metrics, SOS rankings, and full betting analytics."
+        image = top_play['Left_Logo'] or top_play['Right_Logo']
+    else:
+        title = "Edge Engine Pro | Live College Basketball Analytics"
+        description = "Professional-grade CBB betting analytics. We use stationary pick logic to beat market moves with advanced scouting metrics."
+        image = ""  # Default site logo URL here
+
+    return {"title": title, "description": description, "image": image}
+
+
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper().strip()
-    # Comprehensive cleaning to ensure Matchup strings match
     for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "COUGARS", "OWLS", "PHOENIX"]:
         name = name.replace(r, "")
     return "".join(filter(str.isalnum, name))
@@ -180,7 +196,7 @@ def index():
     today_target = f"{now_tz.month}/{now_tz.day}"
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # 1. LOAD ARCHIVE (LOCK LOGIC)
+    # 1. LOAD ARCHIVE
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         if ares.status_code == 200:
@@ -188,7 +204,6 @@ def index():
             if not adf.empty:
                 adf.columns = [c.strip() for c in adf.columns]
                 for _, row in adf.iterrows():
-                    # ESPN_ID is our unique anchor for locking
                     eid_key = clean_id(row.get('ESPN_ID', '0'))
                     if eid_key != "0":
                         archive_data_map[eid_key] = row
@@ -230,13 +245,12 @@ def index():
         eid = clean_id(ld.get('id', '0'))
         status_label = str(ld.get('status', '')).upper()
 
-        # --- STATIONARY PICK UPDATE: Logic to Lock "PENDING" or "FINAL" ---
         is_locked = "PENDING" in status_label or "FINAL" in status_label or ld.get('state') in ['in', 'post']
 
         if is_locked and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick = str(hist.get('Pick', 'N/A'))
-            p_spr_val = clean_val(hist.get('Pick_Spread'))  # Using your specific column name
+            p_spr_val = clean_val(hist.get('Pick_Spread'))
             proj_l = clean_val(hist.get('Proj_Away'))
             proj_r = clean_val(hist.get('Proj_Home'))
             abs_edge = clean_val(hist.get('Edge'))
@@ -249,34 +263,28 @@ def index():
                 'l3pga': clean_val(hist.get('Away_L3_PPGA')), 'l3pgh': clean_val(hist.get('Home_L3_PPGA'))
             }
         else:
-            # Game has not started yet (or not in archive) -> Calculate Live
             ra, rh = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
             pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
             pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
             sa, sh = clean_val(row.get('SOS Away')), clean_val(row.get('SOS Home'))
-
             fd_spread = clean_val(row.get('FD Spread'), default=None)
             proj_l = round(((pa * (1 + (175 - sa) / 1000)) + pgh) / 2, 1)
             proj_r = round(((ph * (1 + (175 - sh) / 1000)) + pga) / 2 + 3.2, 1)
-
             if fd_spread is None:
                 pick, p_spr_val, abs_edge = "TBD", 0.0, 0.0
             else:
                 edge = fd_spread - (proj_l - proj_r)
                 pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
                 abs_edge = round(abs(edge), 1)
-
             stats = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh, 'sa': sa, 'sh': sh,
                      'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
                      'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))}
 
-        # Visibility Logic
         if team_filter == 'top25' and not (stats['ra'] <= 25 or stats['rh'] <= 25): continue
         if team_filter == 'top100' and not (stats['ra'] <= 100 or stats['rh'] <= 100): continue
         is_public_game = (stats['ra'] > 100) and (stats['rh'] > 100)
         can_view = is_premium or is_public_game
 
-        # Action Recommendations
         if abs_edge >= 8.0:
             action_val, rec_val = "PLAY", "🔥 AUTO-PLAY"
         elif abs_edge >= 5.0:
@@ -300,20 +308,22 @@ def index():
             'Action': action_val, 'Rec': rec_val, 'stats': stats, 'is_public': is_public_game
         }
 
-        # Automatically log games to Archive as soon as they start
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
-
         all_games.append(game_obj)
 
     top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
                        key=lambda x: x['Edge'], reverse=True)
 
+    # GENERATE DYNAMIC SEO DATA
+    seo = get_seo_metadata(top_plays[0] if top_plays else None)
+
     return render_template('index.html', games=all_games, top_plays=top_plays,
-                           stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=is_premium)
+                           stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
+                           is_premium=is_premium, seo=seo)  # Added seo to context
 
 
-# --- USER & STRIPE ROUTES REMAINING SAME ---
+# --- USER & STRIPE ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':

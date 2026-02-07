@@ -309,34 +309,31 @@
     </div>
 
     <div id="stats-sidebar" class="slider">
-    <div class="p-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="fw-bold mb-0">PERFORMANCE</h4>
-            <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
-        </div>
-
-        <div class="stat-card-mini" style="background: var(--accent); color: white;">
-            <small class="d-block opacity-75" style="font-size:0.6rem">LIFETIME WIN RATE</small>
-            <span class="h3 fw-bold">{{ stats.PCT }}%</span>
-        </div>
-
-        <div class="row g-2 my-4">
-            <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
-            <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
-        </div>
-
-        <div class="mt-4">
-            <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
-            {% for r in last_10[:5] %}
-            <div class="small mt-2 border-bottom pb-1">
-                <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
-                <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
-                <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
+        <div class="p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold mb-0">PERFORMANCE</h4>
+                <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
             </div>
-            {% endfor %}
+            <div class="stat-card-mini" style="background: var(--accent); color: white;">
+                <small class="d-block opacity-75" style="font-size:0.6rem">LIFETIME WIN RATE</small>
+                <span class="h3 fw-bold">{{ stats.PCT }}%</span>
+            </div>
+            <div class="row g-2 my-4">
+                <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
+                <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
+            </div>
+            <div class="mt-4">
+                <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
+                {% for r in last_10[:5] %}
+                <div class="small mt-2 border-bottom pb-1">
+                    <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
+                    <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
+                    <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
-</div>
 
     <div id="parlay-sidebar" class="slider">
         <div class="p-4">
@@ -414,7 +411,7 @@
                     const heartbeatEl = document.getElementById(`heartbeat-${id}`);
                     const scoreStr = `${data.s_away}-${data.s_home}`;
 
-                    // Update Scores & Status (Always update these)
+                    // 1. UPDATE LIVE DATA (Always update scores/status)
                     if (scoreEl && scoreEl.textContent !== scoreStr) {
                         scoreEl.textContent = scoreStr;
                         scoreEl.classList.add('score-update-flash');
@@ -423,16 +420,20 @@
                     if (tickEl) tickEl.textContent = scoreStr;
                     if (statusEl) statusEl.innerText = data.status;
 
-                    // STATIONARY PICK LOGIC: Lock the pick if game state indicates it has started
+                    // 2. STATIONARY PICK LOGIC
+                    // Check if game has started based on state ('in' means in-progress) or status strings
                     const hasStarted = (data.state === 'in' || data.status.includes('FINAL') || data.status.includes('HALFTIME'));
 
                     if (hasStarted) {
+                        // Show the "STATIONARY PICK" lock badge
                         if (lockEl) lockEl.style.display = "block";
+
+                        // Ensure live heartbeat is shown
                         if (heartbeatEl && data.state === 'in') {
                              heartbeatEl.innerHTML = '<small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>';
                         }
 
-                        // Lock parlay if a live game is inside it
+                        // Prevent Parlay from refreshing if a live leg is currently selected
                         const pLeg = document.getElementById(`parlay-leg-${id}`);
                         if (pLeg && pLeg.style.display === 'block') {
                             window.parlayLocked = true;
@@ -440,7 +441,7 @@
                             if(rBtn) rBtn.classList.add('disabled');
                         }
                     } else {
-                        // ONLY update Pick text/spread if game has NOT started and NO lock exists
+                        // ONLY update Pick text/spread if game has NOT started and lock badge is hidden
                         const lockBadge = document.getElementById(`lock-${id}`);
                         if (!lockBadge || lockBadge.style.display === 'none') {
                             const pickEl = document.getElementById(`pick-text-${id}`);
@@ -448,6 +449,7 @@
                             if (pickEl && data.pick) pickEl.innerText = data.pick;
                             if (spreadEl && data.spread) spreadEl.innerText = data.spread;
 
+                            // Update Parlay legs that haven't started yet
                             const pPick = document.getElementById(`parlay-pick-${id}`);
                             const pSpread = document.getElementById(`parlay-spread-${id}`);
                             if (pPick && data.pick) pPick.innerText = data.pick;
@@ -461,7 +463,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             if (IS_PREMIUM_USER) generateRandomParlay();
-            setInterval(updateScores, 30000); // 30-second interval
+            setInterval(updateScores, 30000);
         });
     </script>
 </body>
