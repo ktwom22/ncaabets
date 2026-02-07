@@ -29,6 +29,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+
 # --- DATABASE MODELS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -37,15 +38,18 @@ class User(UserMixin, db.Model):
     is_premium = db.Column(db.Boolean, default=False)
     stripe_id = db.Column(db.String(100))
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
 
 # --- GOOGLE SHEETS & LIVE API CONFIG ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
 ARCHIVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
 SHEET_ID = "1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM"
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
 
 # --- UTILITIES ---
 def get_gspread_client():
@@ -61,27 +65,33 @@ def get_gspread_client():
         print(f"Auth Error: {e}")
         return None
 
+
 def normalize(name):
     if not name or pd.isna(name): return ""
-    name = str(name).upper()
-    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "COUGARS"]:
+    name = str(name).upper().strip()
+    # Comprehensive cleaning to ensure Matchup strings match
+    for r in ["STATE", "ST", "UNIVERSITY", "UNIV", "TIGERS", "WILDCATS", "BULLDOGS", "COUGARS", "OWLS", "PHOENIX"]:
         name = name.replace(r, "")
     return "".join(filter(str.isalnum, name))
 
+
 def clean_val(val, default=0.0):
     try:
+        if val is None: return default
         s = str(val).strip().replace('%', '').replace('+', '')
-        if s in ['---', '', 'nan', 'None']: return default
+        if s in ['---', '', 'nan', 'None', 'TBD']: return default
         return float(s)
     except:
         return default
 
+
 def clean_id(val):
     try:
-        if pd.isna(val) or str(val).strip() == '': return "0"
+        if pd.isna(val) or str(val).strip() == '' or str(val).strip() == '0': return "0"
         return str(int(float(str(val).strip())))
     except:
         return str(val).split('.')[0].strip()
+
 
 def get_live_data():
     live_map = {}
@@ -95,9 +105,11 @@ def get_live_data():
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             status_state = event['status']['type']['state']
+            short_detail = event['status']['type']['shortDetail']
+
             data = {
                 "id": str(event['id']),
-                "status": "FINAL" if status_state == "post" else event['status']['type']['shortDetail'],
+                "status": "FINAL" if status_state == "post" else short_detail,
                 "state": status_state,
                 "s_away": int(clean_val(t_away.get('score', 0))),
                 "s_home": int(clean_val(t_home.get('score', 0))),
@@ -115,12 +127,14 @@ def get_live_data():
         print(f"Live API Error: {e}")
     return live_map
 
+
 def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     eid = str(game_data['ESPN_ID']).strip()
     if eid == "0" or not archive_sheet: return
+    if game_data['Raw_Pick'] == "TBD" or game_data['Edge'] == 0: return
+
     try:
         is_finished = ld.get('state') == 'post'
-        is_live = ld.get('state') == 'in'
         if eid in col_p_values:
             row_idx = col_p_values.index(eid) + 1
             current_status = archive_sheet.cell(row_idx, 3).value
@@ -133,7 +147,7 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
                 net = p_score + spread - o_score
                 res = "WIN" if net > 0 else "LOSS" if net < 0 else "PUSH"
                 archive_sheet.update(f"C{row_idx}:D{row_idx}", [[res, f"{score_a}-{score_h}"]])
-        elif is_live or is_finished:
+        elif ld.get('state') in ['in', 'post']:
             new_row = [
                 datetime.now(pytz.timezone('US/Eastern')).strftime("%m/%d/%Y"),
                 game_data['Matchup'], "PENDING", f"{ld['s_away']}-{ld['s_home']}",
@@ -147,6 +161,7 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
             col_p_values.append(eid)
     except Exception as e:
         print(f"Logging Failed for {eid}: {e}")
+
 
 # --- CORE ROUTES ---
 
@@ -165,28 +180,34 @@ def index():
     today_target = f"{now_tz.month}/{now_tz.day}"
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
+    # 1. LOAD ARCHIVE (LOCK LOGIC)
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
-        adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
-        if not adf.empty:
-            adf.columns = [c.strip() for c in adf.columns]
-            for _, row in adf.iterrows():
-                archive_data_map[clean_id(row.get('ESPN_ID', '0'))] = row
-            res_col = adf['Result'].astype(str).str.strip().str.upper()
-            wins = len(adf[res_col == 'WIN'])
-            losses = len(adf[res_col == 'LOSS'])
-            if (wins + losses) > 0:
-                pct = round((wins / (wins + losses)) * 100, 1)
-            last_10 = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
+        if ares.status_code == 200:
+            adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
+            if not adf.empty:
+                adf.columns = [c.strip() for c in adf.columns]
+                for _, row in adf.iterrows():
+                    # ESPN_ID is our unique anchor for locking
+                    eid_key = clean_id(row.get('ESPN_ID', '0'))
+                    if eid_key != "0":
+                        archive_data_map[eid_key] = row
+
+                res_col = adf['Result'].astype(str).str.strip().str.upper()
+                wins = len(adf[res_col == 'WIN'])
+                losses = len(adf[res_col == 'LOSS'])
+                if (wins + losses) > 0:
+                    pct = round((wins / (wins + losses)) * 100, 1)
+                last_10 = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
     except Exception as e:
-        print(f"Archive Error: {e}")
+        print(f"Archive Fetch Error: {e}")
 
     gc = get_gspread_client()
     archive_sheet, col_p_values = None, []
     if gc:
         try:
             archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive")
-            col_p_values = archive_sheet.col_values(16)
+            col_p_values = [clean_id(x) for x in archive_sheet.col_values(16)]
         except:
             pass
 
@@ -207,12 +228,17 @@ def index():
             "a_team": a_name, "h_team": h_name
         }))
         eid = clean_id(ld.get('id', '0'))
+        status_label = str(ld.get('status', '')).upper()
 
-        # --- LOCK LOGIC: Frozen picks from Archive if available ---
-        if eid != "0" and eid in archive_data_map:
+        # --- STATIONARY PICK UPDATE: Logic to Lock "PENDING" or "FINAL" ---
+        is_locked = "PENDING" in status_label or "FINAL" in status_label or ld.get('state') in ['in', 'post']
+
+        if is_locked and eid in archive_data_map:
             hist = archive_data_map[eid]
-            pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Spread'))
-            proj_l, proj_r = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home'))
+            pick = str(hist.get('Pick', 'N/A'))
+            p_spr_val = clean_val(hist.get('Pick_Spread'))  # Using your specific column name
+            proj_l = clean_val(hist.get('Proj_Away'))
+            proj_r = clean_val(hist.get('Proj_Home'))
             abs_edge = clean_val(hist.get('Edge'))
             stats = {
                 'ra': clean_val(hist.get('Away_Rank')), 'rh': clean_val(hist.get('Home_Rank')),
@@ -223,32 +249,34 @@ def index():
                 'l3pga': clean_val(hist.get('Away_L3_PPGA')), 'l3pgh': clean_val(hist.get('Home_L3_PPGA'))
             }
         else:
+            # Game has not started yet (or not in archive) -> Calculate Live
             ra, rh = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
             pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
             pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
             sa, sh = clean_val(row.get('SOS Away')), clean_val(row.get('SOS Home'))
-            fd_spread = clean_val(row.get('FD Spread'))
+
+            fd_spread = clean_val(row.get('FD Spread'), default=None)
             proj_l = round(((pa * (1 + (175 - sa) / 1000)) + pgh) / 2, 1)
             proj_r = round(((ph * (1 + (175 - sh) / 1000)) + pga) / 2 + 3.2, 1)
-            rank_diff = abs(ra - rh)
-            boost = rank_diff * 0.05
-            if ra < rh:
-                proj_l = round(proj_l + boost, 1)
-            elif rh < ra:
-                proj_r = round(proj_r + boost, 1)
-            edge = fd_spread - (proj_l - proj_r)
-            pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
-            abs_edge = round(abs(edge), 1)
+
+            if fd_spread is None:
+                pick, p_spr_val, abs_edge = "TBD", 0.0, 0.0
+            else:
+                edge = fd_spread - (proj_l - proj_r)
+                pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
+                abs_edge = round(abs(edge), 1)
+
             stats = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh, 'sa': sa, 'sh': sh,
                      'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
                      'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))}
 
+        # Visibility Logic
         if team_filter == 'top25' and not (stats['ra'] <= 25 or stats['rh'] <= 25): continue
         if team_filter == 'top100' and not (stats['ra'] <= 100 or stats['rh'] <= 100): continue
-
         is_public_game = (stats['ra'] > 100) and (stats['rh'] > 100)
         can_view = is_premium or is_public_game
 
+        # Action Recommendations
         if abs_edge >= 8.0:
             action_val, rec_val = "PLAY", "🔥 AUTO-PLAY"
         elif abs_edge >= 5.0:
@@ -263,7 +291,7 @@ def index():
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
             'Raw_Pick': pick, 'Raw_Spread': p_spr_val,
             'Pick': pick.upper() if can_view else "LOCKED",
-            'Pick_Spread': f"{p_spr_val:+g}" if can_view else "???",
+            'Pick_Spread': f"{p_spr_val:+g}" if (can_view and pick != "TBD") else "???",
             'can_view': can_view, 'Left_Proj': proj_l, 'Right_Proj': proj_r,
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
@@ -272,16 +300,20 @@ def index():
             'Action': action_val, 'Rec': rec_val, 'stats': stats, 'is_public': is_public_game
         }
 
+        # Automatically log games to Archive as soon as they start
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
+
         all_games.append(game_obj)
 
-    top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY'], key=lambda x: x['Edge'],
-                       reverse=True)
+    top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
+                       key=lambda x: x['Edge'], reverse=True)
 
     return render_template('index.html', games=all_games, top_plays=top_plays,
                            stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=is_premium)
 
+
+# --- USER & STRIPE ROUTES REMAINING SAME ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -292,6 +324,7 @@ def login():
             return redirect(url_for('index'))
         flash("Invalid login credentials.")
     return render_template('login.html')
+
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -317,23 +350,28 @@ def signup():
             return str(e)
     return render_template('subscribe.html')
 
+
 @app.route('/api/updates')
 def ghost_updates():
     return jsonify(get_live_data())
+
 
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
+
 @app.route('/forgot-password')
 def forgot_password():
-    return "Password reset page coming soon!" # Or render a template
+    return "Password reset page coming soon!"
+
 
 @app.route('/set_parlay_size', methods=['POST'])
 def set_size():
     session['team_count'] = request.json.get('count')
     return jsonify(success=True)
+
 
 if __name__ == '__main__':
     with app.app_context():

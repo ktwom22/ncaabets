@@ -44,7 +44,7 @@
         .content-blurred { filter: blur(14px); pointer-events: none; user-select: none; }
         .paywall-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.7);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             z-index: 100; text-align: center; padding: 20px;
         }
@@ -85,7 +85,7 @@
         .back-header { background: var(--accent); color: white; padding: 15px; font-weight: 800; font-size: 0.8rem; letter-spacing: 1px; }
 
         /* --- BADGES --- */
-        .lock-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.85); color: #ffd700; padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900; z-index: 10; letter-spacing: 1px; border: 1px solid #ffd700; }
+        .lock-badge { position: absolute; top: 10px; left: 10px; background: #000; color: #ffd700; padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900; z-index: 10; letter-spacing: 1px; border: 1px solid #ffd700; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .bg-play { background: var(--success); color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
         .bg-fade { background: var(--border); color: var(--text); padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
 
@@ -116,9 +116,9 @@
         .news-sidebar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: sticky; top: 130px; }
         .parlay-leg { display: none; }
 
-        /* Filter Bar Styling */
         .filter-bar { padding: 10px 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
         .btn-filter { border-radius: 20px; font-size: 0.75rem; font-weight: 800; padding: 6px 15px; text-transform: uppercase; }
+        .disabled { pointer-events: none; opacity: 0.6; }
     </style>
 </head>
 <body>
@@ -175,21 +175,15 @@
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4" id="games-grid">
                     {% set displayed_count = namespace(value=0) %}
                     {% for g in games %}
-                        {% set is_started = g.is_live or g.status == 'FINAL' %}
-                        {# Define public games as those where BOTH ranks are outside top 100 #}
+                        {% set is_started = g.is_live or g.status == 'FINAL' or 'HALFTIME' in g.status %}
                         {% set is_public_game = (g.stats.ra | int > 100) and (g.stats.rh | int > 100) %}
                         {% set can_see_pick = is_premium or is_public_game %}
 
-                        {# FILTER LOGIC: Ranked #1-25 or #1-100 #}
                         {% set filter_match = true %}
                         {% if active_filter == 'top25' %}
-                            {% if g.stats.ra | int > 25 and g.stats.rh | int > 25 %}
-                                {% set filter_match = false %}
-                            {% endif %}
+                            {% if g.stats.ra | int > 25 and g.stats.rh | int > 25 %} {% set filter_match = false %} {% endif %}
                         {% elif active_filter == 'top100' %}
-                            {% if g.stats.ra | int > 100 and g.stats.rh | int > 100 %}
-                                {% set filter_match = false %}
-                            {% endif %}
+                            {% if g.stats.ra | int > 100 and g.stats.rh | int > 100 %} {% set filter_match = false %} {% endif %}
                         {% endif %}
 
                         {% if filter_match %}
@@ -207,7 +201,6 @@
 
                                 <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
                                     <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                        {# Per your instruction: Picks do not change once game starts #}
                                         <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
 
                                         <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
@@ -305,7 +298,8 @@
                         {% for r in last_10[:5] %}
                         <div class="small mt-2 border-bottom pb-1">
                             <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
-                            {{ r.Matchup }}
+                            <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
+                            <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -315,17 +309,34 @@
     </div>
 
     <div id="stats-sidebar" class="slider">
-        <div class="p-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4 class="fw-bold mb-0">PERFORMANCE</h4>
-                <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
+    <div class="p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="fw-bold mb-0">PERFORMANCE</h4>
+            <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
+        </div>
+
+        <div class="stat-card-mini" style="background: var(--accent); color: white;">
+            <small class="d-block opacity-75" style="font-size:0.6rem">LIFETIME WIN RATE</small>
+            <span class="h3 fw-bold">{{ stats.PCT }}%</span>
+        </div>
+
+        <div class="row g-2 my-4">
+            <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
+            <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
+        </div>
+
+        <div class="mt-4">
+            <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
+            {% for r in last_10[:5] %}
+            <div class="small mt-2 border-bottom pb-1">
+                <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
+                <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
+                <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
             </div>
-            <div class="row g-2 my-4">
-                <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
-                <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
-            </div>
+            {% endfor %}
         </div>
     </div>
+</div>
 
     <div id="parlay-sidebar" class="slider">
         <div class="p-4">
@@ -344,7 +355,7 @@
                 </div>
                 <div id="parlay-content">
                     {% for p in top_plays[:15] %}
-                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
+                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' or 'HALFTIME' in p.status else 'false' }}">
                         <div class="d-flex justify-content-between"><small class="fw-bold text-muted">{{ p.Matchup }}</small></div>
                         <div class="h6 mt-1 mb-0 fw-bold">
                             <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
@@ -400,8 +411,10 @@
                     const tickEl = document.getElementById(`tick-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
                     const lockEl = document.getElementById(`lock-${id}`);
+                    const heartbeatEl = document.getElementById(`heartbeat-${id}`);
                     const scoreStr = `${data.s_away}-${data.s_home}`;
 
+                    // Update Scores & Status (Always update these)
                     if (scoreEl && scoreEl.textContent !== scoreStr) {
                         scoreEl.textContent = scoreStr;
                         scoreEl.classList.add('score-update-flash');
@@ -410,10 +423,16 @@
                     if (tickEl) tickEl.textContent = scoreStr;
                     if (statusEl) statusEl.innerText = data.status;
 
-                    // STATIONARY PICK LOGIC: If game is live/halftime/final, show lock and don't update text
-                    if (data.state === 'in' || data.status.includes('FINAL') || data.status.includes('HALFTIME')) {
-                        if (lockEl) lockEl.style.display = "block";
+                    // STATIONARY PICK LOGIC: Lock the pick if game state indicates it has started
+                    const hasStarted = (data.state === 'in' || data.status.includes('FINAL') || data.status.includes('HALFTIME'));
 
+                    if (hasStarted) {
+                        if (lockEl) lockEl.style.display = "block";
+                        if (heartbeatEl && data.state === 'in') {
+                             heartbeatEl.innerHTML = '<small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>';
+                        }
+
+                        // Lock parlay if a live game is inside it
                         const pLeg = document.getElementById(`parlay-leg-${id}`);
                         if (pLeg && pLeg.style.display === 'block') {
                             window.parlayLocked = true;
@@ -421,16 +440,19 @@
                             if(rBtn) rBtn.classList.add('disabled');
                         }
                     } else {
-                        // Only update Pick text/spread if game has NOT started
-                        const pickEl = document.getElementById(`pick-text-${id}`);
-                        const spreadEl = document.getElementById(`spread-${id}`);
-                        if (pickEl && data.pick) pickEl.innerText = data.pick;
-                        if (spreadEl && data.spread) spreadEl.innerText = data.spread;
+                        // ONLY update Pick text/spread if game has NOT started and NO lock exists
+                        const lockBadge = document.getElementById(`lock-${id}`);
+                        if (!lockBadge || lockBadge.style.display === 'none') {
+                            const pickEl = document.getElementById(`pick-text-${id}`);
+                            const spreadEl = document.getElementById(`spread-${id}`);
+                            if (pickEl && data.pick) pickEl.innerText = data.pick;
+                            if (spreadEl && data.spread) spreadEl.innerText = data.spread;
 
-                        const pPick = document.getElementById(`parlay-pick-${id}`);
-                        const pSpread = document.getElementById(`parlay-spread-${id}`);
-                        if (pPick && data.pick) pPick.innerText = data.pick;
-                        if (pSpread && data.spread) pSpread.innerText = data.spread;
+                            const pPick = document.getElementById(`parlay-pick-${id}`);
+                            const pSpread = document.getElementById(`parlay-spread-${id}`);
+                            if (pPick && data.pick) pPick.innerText = data.pick;
+                            if (pSpread && data.spread) pSpread.innerText = data.spread;
+                        }
                     }
                 }
                 document.getElementById('sync-timer').innerHTML = `<span style="color: #28a745;">●</span> SYNCED: ${new Date().toLocaleTimeString()}`;
@@ -439,7 +461,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             if (IS_PREMIUM_USER) generateRandomParlay();
-            setInterval(updateScores, 30000);
+            setInterval(updateScores, 30000); // 30-second interval
         });
     </script>
 </body>
