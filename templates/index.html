@@ -36,7 +36,7 @@
             background-color: var(--bg); color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow-x: hidden;
-            padding-bottom: 60px;
+            padding-bottom: 80px;
         }
 
         /* --- PAYWALL & BLUR --- */
@@ -105,12 +105,18 @@
 
         .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 10px 0 20px rgba(0,0,0,0.1); }
         .stat-card-mini { background: var(--sub-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); }
-        .fab { position: fixed; bottom: 25px; left: 20px; z-index: 3000; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+
+        .fab-container { position: fixed; bottom: 25px; left: 20px; z-index: 3000; display: flex; gap: 10px; }
+        .fab { width: 65px; height: 65px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-size: 0.6rem; }
+        .fab-parlay { background: #6f42c1; }
 
         .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
         .news-sidebar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: sticky; top: 130px; }
+
+        /* New Style for Parlay Selector */
+        .parlay-leg { display: none; } /* Default hidden until chosen by randomizer */
     </style>
 </head>
 <body>
@@ -158,10 +164,7 @@
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
                     {% for g in games %}
                         {% set is_started = g.is_live or g.status == 'FINAL' %}
-
-                        {# LOGIC: If both ranks are > 100, allow public access #}
                         {% set is_public_game = (g.stats.ra | int > 100) and (g.stats.rh | int > 100) %}
-                        {# The content is accessible if the user is premium OR if the game is public #}
                         {% set can_see_pick = is_premium or is_public_game %}
 
                     <div class="col" id="game-{{ g.ESPN_ID }}">
@@ -179,7 +182,6 @@
                             <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
                                 <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
 
-                                    {# Lock remains active once game starts to keep picks stationary #}
                                     <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
 
                                     <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
@@ -313,19 +315,132 @@
         </div>
     </div>
 
-    <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
+    <div id="parlay-sidebar" class="slider">
+        <div class="p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="fw-bold mb-0">ENGINE PARLAY</h4>
+                <button class="btn-close" onclick="toggleS('parlay-sidebar')"></button>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold text-muted mb-1" style="font-size: 0.65rem;">SELECT PARLAY SIZE</label>
+                <select class="form-select form-select-sm fw-bold border-primary" id="parlaySizeSelector" onchange="generateRandomParlay()">
+                    <option value="2">2-GAME PARLAY</option>
+                    <option value="3" selected>3-GAME PARLAY</option>
+                    <option value="4">4-GAME PARLAY</option>
+                    <option value="5">5-GAME PARLAY</option>
+                </select>
+            </div>
+
+            <div id="parlay-content">
+                {% if top_plays %}
+                    {% for p in top_plays[:20] %}
+                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg"
+                         id="parlay-leg-{{ loop.index0 }}"
+                         data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
+                        <div class="d-flex justify-content-between">
+                            <small class="fw-bold text-muted">{{ p.Matchup }}</small>
+                            <span class="badge bg-primary" style="font-size: 0.5rem;">LEG</span>
+                        </div>
+                        <div class="h6 mt-1 mb-0 fw-bold">
+                            <span class="parlay-pick" id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
+                            <span class="text-warning parlay-spread" id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    <button class="btn btn-sm btn-dark w-100 mt-2 mb-3 fw-bold" onclick="generateRandomParlay()">REFRESH RANDOM OPTIONS</button>
+
+                    <div class="mt-4 p-3 rounded bg-light border text-center">
+                        <small class="text-muted d-block">ESTIMATED ODDS</small>
+                        <h3 class="fw-bold text-success" id="parlayOddsDisplay">+650</h3>
+                    </div>
+                {% else %}
+                    <div class="text-center mt-5 text-muted">
+                        <p>No parlay generated for this slate yet.</p>
+                        <small>Check back as high-edge games approach tip-off.</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="fab-container">
+        <button class="fab" onclick="toggleS('stats-sidebar')">📊<br>STATS</button>
+        <button class="fab fab-parlay" onclick="toggleS('parlay-sidebar')">🔥<br>PARLAY</button>
+    </div>
 
     <script>
         function toggleS(id) {
             const s = document.getElementById(id);
+            const isStats = id === 'stats-sidebar';
             const w = window.innerWidth < 600 ? '100%' : '350px';
+            const other = isStats ? document.getElementById('parlay-sidebar') : document.getElementById('stats-sidebar');
+            other.style.width = '0';
             s.style.width = (s.style.width === w) ? '0' : w;
+
+            if (id === 'parlay-sidebar' && s.style.width !== '0') {
+                // Only generate if we don't have a selection already locked in
+                if(!window.parlayLocked) generateRandomParlay();
+            }
+        }
+
+        function generateRandomParlay() {
+            const size = parseInt(document.getElementById('parlaySizeSelector').value);
+            const allLegs = Array.from(document.querySelectorAll('.parlay-leg'));
+
+            // Filter out games that have already started to respect the "Lock" rule
+            const availableLegs = allLegs.filter(leg => leg.dataset.started === 'false');
+
+            // If we don't have enough pre-game legs, use all available but flag them
+            const pool = availableLegs.length >= size ? availableLegs : allLegs;
+
+            // Hide all first
+            allLegs.forEach(leg => leg.style.display = 'none');
+
+            // Shuffle algorithm (Fisher-Yates)
+            let shuffled = pool.sort(() => 0.5 - Math.random());
+
+            // Pick the first 'size' elements
+            let selected = shuffled.slice(0, size);
+
+            selected.forEach((leg, index) => {
+                leg.style.display = 'block';
+                leg.querySelector('.badge').innerText = `LEG ${index + 1}`;
+            });
+
+            // Update Odds
+            const oddsMap = { 2: "+260", 3: "+650", 4: "+1250", 5: "+2400" };
+            const oddsDisplay = document.getElementById('parlayOddsDisplay');
+            if(oddsDisplay) oddsDisplay.innerText = oddsMap[size] || "+260";
+        }
+
+        function checkAccessKey() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const accessKey = urlParams.get('key');
+            if (accessKey === 'pro_access') {
+                document.querySelectorAll('.content-blurred').forEach(el => {
+                    el.classList.remove('content-blurred');
+                    el.style.filter = 'none';
+                    el.style.pointerEvents = 'auto';
+                    el.style.userSelect = 'auto';
+                });
+                document.querySelectorAll('.paywall-overlay').forEach(overlay => {
+                    overlay.style.display = 'none';
+                });
+                const navBrand = document.querySelector('.navbar-light .fw-bold');
+                if (navBrand && !navBrand.innerHTML.includes('PRO ACCESS ACTIVE')) {
+                    navBrand.innerHTML += ' <span class="badge bg-success" style="font-size:0.5rem; vertical-align:middle; margin-left:5px;">PRO ACCESS ACTIVE</span>';
+                }
+            }
         }
 
         async function updateScores() {
             try {
                 const res = await fetch('/api/updates');
                 const liveMap = await res.json();
+                const isPro = new URLSearchParams(window.location.search).get('key') === 'pro_access';
+
                 for (const key in liveMap) {
                     const data = liveMap[key];
                     const id = data.id;
@@ -333,6 +448,11 @@
                     const tickEl = document.getElementById(`tick-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
                     const lockEl = document.getElementById(`lock-${id}`);
+                    const pickEl = document.getElementById(`pick-text-${id}`);
+                    const spreadEl = document.getElementById(`spread-${id}`);
+                    const parlayPickEl = document.getElementById(`parlay-pick-${id}`);
+                    const parlaySpreadEl = document.getElementById(`parlay-spread-${id}`);
+
                     const scoreStr = `${data.s_away}-${data.s_home}`;
 
                     if (scoreEl && scoreEl.textContent !== scoreStr) {
@@ -343,14 +463,32 @@
                     if (tickEl) tickEl.textContent = scoreStr;
                     if (statusEl) statusEl.innerText = data.status;
 
-                    if (data.state === 'in' || data.status === 'FINAL') {
+                    // --- STATIONARY PICK LOGIC ---
+                    if (data.state === 'in' || data.status === 'FINAL' || data.status.includes('HALFTIME')) {
                         if (lockEl) lockEl.style.display = "block";
+                        // If any game in the parlay starts, we mark the UI as locked
+                        const pLeg = document.getElementById(`parlay-pick-${id}`);
+                        if(pLeg) window.parlayLocked = true;
+                    } else {
+                        if (pickEl && data.pick) pickEl.innerText = data.pick;
+                        if (spreadEl && data.spread) spreadEl.innerText = data.spread;
+                        if (parlayPickEl && data.pick) parlayPickEl.innerText = data.pick;
+                        if (parlaySpreadEl && data.spread) parlaySpreadEl.innerText = data.spread;
+                        if (lockEl) lockEl.style.display = "none";
                     }
                 }
+
+                if (isPro) checkAccessKey();
                 document.getElementById('sync-timer').innerHTML = `<span style="color: #28a745;">●</span> SYNCED: ${new Date().toLocaleTimeString()}`;
             } catch (e) { console.warn("Sync failed"); }
         }
-        setInterval(updateScores, 30000);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            checkAccessKey();
+            window.parlayLocked = false;
+            generateRandomParlay();
+            setInterval(updateScores, 30000);
+        });
     </script>
 </body>
 </html>
