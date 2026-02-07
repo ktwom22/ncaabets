@@ -330,6 +330,11 @@ def logout():
 def forgot_password():
     return "Password reset page coming soon!" # Or render a template
 
+@app.route('/set_parlay_size', methods=['POST'])
+def set_size():
+    session['team_count'] = request.json.get('count')
+    return jsonify(success=True)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
