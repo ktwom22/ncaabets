@@ -60,7 +60,7 @@
         .ticker-wrap {
             width: 100%; overflow: hidden; background-color: var(--ticker-bg);
             border-bottom: 1px solid var(--border); height: 45px;
-            display: flex; align-items: center; position: sticky; top: 65px; z-index: 999;
+            display: flex; align-items: center; position: sticky; top: 0; z-index: 1000;
         }
         .ticker { display: flex; white-space: nowrap; animation: ticker-move 90s linear infinite; color: #fff; }
         .ticker:hover { animation-play-state: paused; }
@@ -114,14 +114,31 @@
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
         .news-sidebar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: sticky; top: 130px; }
+        .parlay-leg { display: none; }
 
-        /* New Style for Parlay Selector */
-        .parlay-leg { display: none; } /* Default hidden until chosen by randomizer */
+        /* Filter Bar Styling */
+        .filter-bar { padding: 10px 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+        .btn-filter { border-radius: 20px; font-size: 0.75rem; font-weight: 800; padding: 6px 15px; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-light bg-white border-bottom p-3 sticky-top">
+    <div class="ticker-wrap">
+        <div class="ticker">
+            <div class="ticker-item"><span class="espn-tag">LIVE VIA ESPN</span></div>
+            {% for g in games %}
+                <div class="ticker-item">
+                    <img src="{{ g.Left_Logo }}" class="tick-logo">
+                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[0][:3] }}</span>
+                    <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
+                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[1][:3] }}</span>
+                    <img src="{{ g.Right_Logo }}" class="tick-logo">
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <nav class="navbar navbar-light bg-white border-bottom p-3">
         <div class="container d-flex justify-content-between align-items-center">
             <span class="fw-bold text-dark">EDGE ENGINE <span style="color:var(--accent)">PRO</span></span>
             <div class="d-flex align-items-center gap-3">
@@ -143,129 +160,136 @@
         </div>
     </nav>
 
-    <div class="ticker-wrap">
-        <div class="ticker">
-            <div class="ticker-item"><span class="espn-tag">LIVE VIA ESPN</span></div>
-            {% for g in games %}
-                <div class="ticker-item">
-                    <img src="{{ g.Left_Logo }}" class="tick-logo">
-                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[0][:3] }}</span>
-                    <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
-                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[1][:3] }}</span>
-                    <img src="{{ g.Right_Logo }}" class="tick-logo">
-                </div>
-            {% endfor %}
+    <div class="bg-white border-bottom shadow-sm">
+        <div class="container filter-bar">
+            {% set active_filter = request.args.get('filter', 'all') %}
+            <a href="{{ url_for('index', filter='all') }}" class="btn btn-filter {% if active_filter == 'all' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">All Games</a>
+            <a href="{{ url_for('index', filter='top25') }}" class="btn btn-filter {% if active_filter == 'top25' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Top 25 Ranked</a>
+            <a href="{{ url_for('index', filter='top100') }}" class="btn btn-filter {% if active_filter == 'top100' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Top 100 Matchups</a>
         </div>
     </div>
 
     <div class="container-fluid mt-4 px-lg-5">
         <div class="row">
             <div class="col-lg-9">
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4" id="games-grid">
+                    {% set displayed_count = namespace(value=0) %}
                     {% for g in games %}
                         {% set is_started = g.is_live or g.status == 'FINAL' %}
+                        {# Define public games as those where BOTH ranks are outside top 100 #}
                         {% set is_public_game = (g.stats.ra | int > 100) and (g.stats.rh | int > 100) %}
                         {% set can_see_pick = is_premium or is_public_game %}
 
-                    <div class="col" id="game-{{ g.ESPN_ID }}">
-                        <div class="game-container paywall-container">
-
-                            {% if not can_see_pick %}
-                            <div class="paywall-overlay">
-                                <div class="mb-2" style="font-size: 1.5rem;">🔒</div>
-                                <h6 class="fw-bold text-dark mb-3">PREMIUM PICK LOCKED</h6>
-                                <a href="/login" class="unlock-btn">UNLOCK ALL PICKS</a>
-                                <small class="mt-2 text-muted" style="font-size: 0.6rem;">High-Tier Ranked Game</small>
-                            </div>
+                        {# FILTER LOGIC: Ranked #1-25 or #1-100 #}
+                        {% set filter_match = true %}
+                        {% if active_filter == 'top25' %}
+                            {% if g.stats.ra | int > 25 and g.stats.rh | int > 25 %}
+                                {% set filter_match = false %}
                             {% endif %}
+                        {% elif active_filter == 'top100' %}
+                            {% if g.stats.ra | int > 100 and g.stats.rh | int > 100 %}
+                                {% set filter_match = false %}
+                            {% endif %}
+                        {% endif %}
 
-                            <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
-                                <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-
-                                    <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
-
-                                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
-                                        <div>
-                                            <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                            <span class="ms-2 fw-bold" style="font-size: 0.85rem; color:var(--accent)">{{ g.Rec }}</span>
-                                            {% if is_public_game and not is_premium %}
-                                                <span class="badge bg-dark ms-2" style="font-size: 0.5rem; letter-spacing: 0.5px;">PUBLIC ACCESS</span>
-                                            {% endif %}
-                                        </div>
-                                        <div id="heartbeat-{{ g.ESPN_ID }}">
-                                            {% if g.is_live %}
-                                            <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-
-                                    <div class="text-center p-4">
-                                        <div class="mb-3">
-                                            <small class="text-muted d-block mb-1" style="font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase;">SELECTION</small>
-                                            <div class="fw-bold text-dark" style="font-size: 1.3rem;">
-                                                <span id="pick-text-{{ g.ESPN_ID }}">{{ g.Pick }}</span>
-                                                <span class="text-warning" id="spread-{{ g.ESPN_ID }}">{{ g.Pick_Spread }}</span>
-                                            </div>
-                                        </div>
-
-                                        <div class="d-flex justify-content-around align-items-center">
-                                            <div class="text-center" style="width: 30%;">
-                                                <img src="{{ g.Left_Logo }}" class="t-logo mb-2">
-                                                <span class="proj-val">{{ g.Left_Proj }}</span>
-                                            </div>
-                                            <div class="px-2 text-center" style="width: 40%;">
-                                                <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
-                                                <small class="text-muted d-block" style="font-size: 0.55rem; font-weight: bold;">LIVE SCORE</small>
-                                            </div>
-                                            <div class="text-center" style="width: 30%;">
-                                                <img src="{{ g.Right_Logo }}" class="t-logo mb-2">
-                                                <span class="proj-val">{{ g.Right_Proj }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="row g-0 border-top text-center p-3 mt-auto" style="background: var(--sub-bg);">
-                                        <div class="col-6 border-end">
-                                            <small class="text-muted d-block" style="font-size: 0.65rem;">STATUS</small>
-                                            <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted d-block" style="font-size: 0.65rem;">EDGE</small>
-                                            <b class="text-success" style="font-size: 1.1rem;">+{{ g.Edge }} PTS</b>
-                                        </div>
-                                    </div>
+                        {% if filter_match %}
+                        {% set displayed_count.value = displayed_count.value + 1 %}
+                        <div class="col" id="game-{{ g.ESPN_ID }}">
+                            <div class="game-container paywall-container">
+                                {% if not can_see_pick %}
+                                <div class="paywall-overlay">
+                                    <div class="mb-2" style="font-size: 1.5rem;">🔒</div>
+                                    <h6 class="fw-bold text-dark mb-3">PREMIUM PICK LOCKED</h6>
+                                    <a href="/login" class="unlock-btn">UNLOCK ALL PICKS</a>
+                                    <small class="mt-2 text-muted" style="font-size: 0.6rem;">High-Tier Ranked Game</small>
                                 </div>
+                                {% endif %}
 
-                                <div class="card-back" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                    <div class="back-header text-center">SCOUTING METRICS</div>
-                                    <div class="stats-grid">
-                                        <div class="stat-column">
-                                            <h4>AWAY</h4>
-                                            <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">L3 PPG</span><span class="stat-value">{{ g.stats.l3pa }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">PPG Def</span><span class="stat-value">{{ g.stats.pga }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">L3 PPG Def</span><span class="stat-value">{{ g.stats.l3pga }}</span></div>
+                                <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
+                                    <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
+                                        {# Per your instruction: Picks do not change once game starts #}
+                                        <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
+
+                                        <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
+                                            <div>
+                                                <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
+                                                <span class="ms-2 fw-bold" style="font-size: 0.85rem; color:var(--accent)">{{ g.Rec }}</span>
+                                            </div>
+                                            <div id="heartbeat-{{ g.ESPN_ID }}">
+                                                {% if g.is_live %}
+                                                <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
+                                                {% endif %}
+                                            </div>
                                         </div>
-                                        <div class="stat-column">
-                                            <h4>HOME</h4>
-                                            <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">L3 PPG</span><span class="stat-value">{{ g.stats.l3ph }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">PPG Def</span><span class="stat-value">{{ g.stats.pgh }}</span></div>
-                                            <div class="stat-row"><span class="stat-label">L3 PPG Def</span><span class="stat-value">{{ g.stats.l3pgh }}</span></div>
+
+                                        <div class="text-center p-4">
+                                            <div class="mb-3">
+                                                <small class="text-muted d-block mb-1" style="font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase;">SELECTION</small>
+                                                <div class="fw-bold text-dark" style="font-size: 1.3rem;">
+                                                    <span id="pick-text-{{ g.ESPN_ID }}">{{ g.Pick }}</span>
+                                                    <span class="text-warning" id="spread-{{ g.ESPN_ID }}">{{ g.Pick_Spread }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-around align-items-center">
+                                                <div class="text-center" style="width: 30%;">
+                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-2">
+                                                    <span class="proj-val">{{ g.Left_Proj }}</span>
+                                                </div>
+                                                <div class="px-2 text-center" style="width: 40%;">
+                                                    <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
+                                                    <small class="text-muted d-block" style="font-size: 0.55rem; font-weight: bold;">LIVE SCORE</small>
+                                                </div>
+                                                <div class="text-center" style="width: 30%;">
+                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-2">
+                                                    <span class="proj-val">{{ g.Right_Proj }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row g-0 border-top text-center p-3 mt-auto" style="background: var(--sub-bg);">
+                                            <div class="col-6 border-end">
+                                                <small class="text-muted d-block" style="font-size: 0.65rem;">STATUS</small>
+                                                <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block" style="font-size: 0.65rem;">EDGE</small>
+                                                <b class="text-success" style="font-size: 1.1rem;">+{{ g.Edge }} PTS</b>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="p-3 border-top bg-light text-center">
-                                        <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold w-100">ESPN BOX SCORE</a>
+
+                                    <div class="card-back" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
+                                        <div class="back-header text-center">SCOUTING METRICS</div>
+                                        <div class="stats-grid">
+                                            <div class="stat-column">
+                                                <h4>AWAY</h4>
+                                                <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
+                                            </div>
+                                            <div class="stat-column">
+                                                <h4>HOME</h4>
+                                                <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
+                                            </div>
+                                        </div>
+                                        <div class="p-3 border-top bg-light text-center">
+                                            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold w-100">ESPN BOX SCORE</a>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        {% endif %}
                     {% endfor %}
+
+                    {% if displayed_count.value == 0 %}
+                    <div class="col-12 text-center py-5">
+                        <h4 class="text-muted">No matchups found for this filter.</h4>
+                        <a href="{{ url_for('index', filter='all') }}" class="btn btn-primary mt-2">View All Games</a>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 
@@ -290,11 +314,6 @@
         </div>
     </div>
 
-    <footer class="mt-5 py-5 border-top bg-white text-center">
-        <p class="text-muted" style="font-size: 0.7rem;">RESPONSIBLE GAMBLING: Informational purposes only.</p>
-        <small class="text-muted">© 2026 EDGE ENGINE ANALYTICS</small>
-    </footer>
-
     <div id="stats-sidebar" class="slider">
         <div class="p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -305,13 +324,6 @@
                 <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
                 <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
             </div>
-            <h6>RECENT HISTORY</h6>
-            {% for g in last_10 %}
-            <div class="stat-card-mini d-flex justify-content-between">
-                <small>{{ g.Matchup }}</small>
-                <span class="badge {% if g.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}">{{ g.Result }}</span>
-            </div>
-            {% endfor %}
         </div>
     </div>
 
@@ -321,47 +333,30 @@
                 <h4 class="fw-bold mb-0">ENGINE PARLAY</h4>
                 <button class="btn-close" onclick="toggleS('parlay-sidebar')"></button>
             </div>
-
-            <div class="mb-4">
-                <label class="form-label fw-bold text-muted mb-1" style="font-size: 0.65rem;">SELECT PARLAY SIZE</label>
-                <select class="form-select form-select-sm fw-bold border-primary" id="parlaySizeSelector" onchange="generateRandomParlay()">
-                    <option value="2">2-GAME PARLAY</option>
-                    <option value="3" selected>3-GAME PARLAY</option>
-                    <option value="4">4-GAME PARLAY</option>
-                    <option value="5">5-GAME PARLAY</option>
-                </select>
-            </div>
-
-            <div id="parlay-content">
-                {% if top_plays %}
-                    {% for p in top_plays[:20] %}
-                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg"
-                         id="parlay-leg-{{ loop.index0 }}"
-                         data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
-                        <div class="d-flex justify-content-between">
-                            <small class="fw-bold text-muted">{{ p.Matchup }}</small>
-                            <span class="badge bg-primary" style="font-size: 0.5rem;">LEG</span>
-                        </div>
+            {% if is_premium %}
+                <div class="mb-4">
+                    <label class="form-label fw-bold text-muted mb-1" style="font-size: 0.65rem;">SELECT PARLAY SIZE</label>
+                    <select class="form-select form-select-sm fw-bold border-primary" id="parlaySizeSelector" onchange="generateRandomParlay()">
+                        <option value="2">2-GAME PARLAY</option>
+                        <option value="3" selected>3-GAME PARLAY</option>
+                        <option value="4">4-GAME PARLAY</option>
+                    </select>
+                </div>
+                <div id="parlay-content">
+                    {% for p in top_plays[:15] %}
+                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
+                        <div class="d-flex justify-content-between"><small class="fw-bold text-muted">{{ p.Matchup }}</small></div>
                         <div class="h6 mt-1 mb-0 fw-bold">
-                            <span class="parlay-pick" id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
-                            <span class="text-warning parlay-spread" id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
+                            <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
+                            <span class="text-warning" id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
                         </div>
                     </div>
                     {% endfor %}
-
-                    <button class="btn btn-sm btn-dark w-100 mt-2 mb-3 fw-bold" onclick="generateRandomParlay()">REFRESH RANDOM OPTIONS</button>
-
-                    <div class="mt-4 p-3 rounded bg-light border text-center">
-                        <small class="text-muted d-block">ESTIMATED ODDS</small>
-                        <h3 class="fw-bold text-success" id="parlayOddsDisplay">+650</h3>
-                    </div>
-                {% else %}
-                    <div class="text-center mt-5 text-muted">
-                        <p>No parlay generated for this slate yet.</p>
-                        <small>Check back as high-edge games approach tip-off.</small>
-                    </div>
-                {% endif %}
-            </div>
+                    <button id="parlay-refresh-btn" class="btn btn-sm btn-dark w-100 mt-2 mb-3 fw-bold" onclick="generateRandomParlay()">REFRESH PARLAY</button>
+                </div>
+            {% else %}
+                <div class="text-center mt-5"><p>PRO ACCESS REQUIRED</p></div>
+            {% endif %}
         </div>
     </div>
 
@@ -371,88 +366,40 @@
     </div>
 
     <script>
+        const IS_PREMIUM_USER = {{ 'true' if is_premium else 'false' }};
+        window.parlayLocked = false;
+
         function toggleS(id) {
             const s = document.getElementById(id);
-            const isStats = id === 'stats-sidebar';
             const w = window.innerWidth < 600 ? '100%' : '350px';
-            const other = isStats ? document.getElementById('parlay-sidebar') : document.getElementById('stats-sidebar');
+            const other = id === 'stats-sidebar' ? document.getElementById('parlay-sidebar') : document.getElementById('stats-sidebar');
             other.style.width = '0';
             s.style.width = (s.style.width === w) ? '0' : w;
-
-            if (id === 'parlay-sidebar' && s.style.width !== '0') {
-                // Only generate if we don't have a selection already locked in
-                if(!window.parlayLocked) generateRandomParlay();
-            }
         }
 
         function generateRandomParlay() {
+            if (!IS_PREMIUM_USER || window.parlayLocked) return;
             const size = parseInt(document.getElementById('parlaySizeSelector').value);
             const allLegs = Array.from(document.querySelectorAll('.parlay-leg'));
-
-            // Filter out games that have already started to respect the "Lock" rule
             const availableLegs = allLegs.filter(leg => leg.dataset.started === 'false');
-
-            // If we don't have enough pre-game legs, use all available but flag them
-            const pool = availableLegs.length >= size ? availableLegs : allLegs;
-
-            // Hide all first
+            if (availableLegs.length < size) return;
             allLegs.forEach(leg => leg.style.display = 'none');
-
-            // Shuffle algorithm (Fisher-Yates)
-            let shuffled = pool.sort(() => 0.5 - Math.random());
-
-            // Pick the first 'size' elements
-            let selected = shuffled.slice(0, size);
-
-            selected.forEach((leg, index) => {
-                leg.style.display = 'block';
-                leg.querySelector('.badge').innerText = `LEG ${index + 1}`;
-            });
-
-            // Update Odds
-            const oddsMap = { 2: "+260", 3: "+650", 4: "+1250", 5: "+2400" };
-            const oddsDisplay = document.getElementById('parlayOddsDisplay');
-            if(oddsDisplay) oddsDisplay.innerText = oddsMap[size] || "+260";
-        }
-
-        function checkAccessKey() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const accessKey = urlParams.get('key');
-            if (accessKey === 'pro_access') {
-                document.querySelectorAll('.content-blurred').forEach(el => {
-                    el.classList.remove('content-blurred');
-                    el.style.filter = 'none';
-                    el.style.pointerEvents = 'auto';
-                    el.style.userSelect = 'auto';
-                });
-                document.querySelectorAll('.paywall-overlay').forEach(overlay => {
-                    overlay.style.display = 'none';
-                });
-                const navBrand = document.querySelector('.navbar-light .fw-bold');
-                if (navBrand && !navBrand.innerHTML.includes('PRO ACCESS ACTIVE')) {
-                    navBrand.innerHTML += ' <span class="badge bg-success" style="font-size:0.5rem; vertical-align:middle; margin-left:5px;">PRO ACCESS ACTIVE</span>';
-                }
-            }
+            availableLegs.sort(() => 0.5 - Math.random()).slice(0, size).forEach(leg => leg.style.display = 'block');
         }
 
         async function updateScores() {
             try {
                 const res = await fetch('/api/updates');
                 const liveMap = await res.json();
-                const isPro = new URLSearchParams(window.location.search).get('key') === 'pro_access';
 
                 for (const key in liveMap) {
                     const data = liveMap[key];
                     const id = data.id;
+
                     const scoreEl = document.getElementById(`score-${id}`);
                     const tickEl = document.getElementById(`tick-${id}`);
                     const statusEl = document.getElementById(`status-${id}`);
                     const lockEl = document.getElementById(`lock-${id}`);
-                    const pickEl = document.getElementById(`pick-text-${id}`);
-                    const spreadEl = document.getElementById(`spread-${id}`);
-                    const parlayPickEl = document.getElementById(`parlay-pick-${id}`);
-                    const parlaySpreadEl = document.getElementById(`parlay-spread-${id}`);
-
                     const scoreStr = `${data.s_away}-${data.s_home}`;
 
                     if (scoreEl && scoreEl.textContent !== scoreStr) {
@@ -463,30 +410,35 @@
                     if (tickEl) tickEl.textContent = scoreStr;
                     if (statusEl) statusEl.innerText = data.status;
 
-                    // --- STATIONARY PICK LOGIC ---
-                    if (data.state === 'in' || data.status === 'FINAL' || data.status.includes('HALFTIME')) {
+                    // STATIONARY PICK LOGIC: If game is live/halftime/final, show lock and don't update text
+                    if (data.state === 'in' || data.status.includes('FINAL') || data.status.includes('HALFTIME')) {
                         if (lockEl) lockEl.style.display = "block";
-                        // If any game in the parlay starts, we mark the UI as locked
-                        const pLeg = document.getElementById(`parlay-pick-${id}`);
-                        if(pLeg) window.parlayLocked = true;
+
+                        const pLeg = document.getElementById(`parlay-leg-${id}`);
+                        if (pLeg && pLeg.style.display === 'block') {
+                            window.parlayLocked = true;
+                            const rBtn = document.getElementById('parlay-refresh-btn');
+                            if(rBtn) rBtn.classList.add('disabled');
+                        }
                     } else {
+                        // Only update Pick text/spread if game has NOT started
+                        const pickEl = document.getElementById(`pick-text-${id}`);
+                        const spreadEl = document.getElementById(`spread-${id}`);
                         if (pickEl && data.pick) pickEl.innerText = data.pick;
                         if (spreadEl && data.spread) spreadEl.innerText = data.spread;
-                        if (parlayPickEl && data.pick) parlayPickEl.innerText = data.pick;
-                        if (parlaySpreadEl && data.spread) parlaySpreadEl.innerText = data.spread;
-                        if (lockEl) lockEl.style.display = "none";
+
+                        const pPick = document.getElementById(`parlay-pick-${id}`);
+                        const pSpread = document.getElementById(`parlay-spread-${id}`);
+                        if (pPick && data.pick) pPick.innerText = data.pick;
+                        if (pSpread && data.spread) pSpread.innerText = data.spread;
                     }
                 }
-
-                if (isPro) checkAccessKey();
                 document.getElementById('sync-timer').innerHTML = `<span style="color: #28a745;">●</span> SYNCED: ${new Date().toLocaleTimeString()}`;
-            } catch (e) { console.warn("Sync failed"); }
+            } catch (e) { console.warn("Sync failed", e); }
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            checkAccessKey();
-            window.parlayLocked = false;
-            generateRandomParlay();
+            if (IS_PREMIUM_USER) generateRandomParlay();
             setInterval(updateScores, 30000);
         });
     </script>
