@@ -403,10 +403,7 @@ def set_size():
     session['team_count'] = request.json.get('count')
     return jsonify(success=True)
 
-@app.route('/robots.txt')
-@app.route('/sitemap.xml')
-def static_from_root():
-    return send_from_directory(app.static_folder, request.path[1:])
+
 
 if __name__ == '__main__':
     with app.app_context():
