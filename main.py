@@ -404,6 +404,19 @@ def set_size():
     return jsonify(success=True)
 
 @app.route('/robots.txt')
+def robots_txt():
+    # Adding a blank line at the top helps some crawlers
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "",
+        "Sitemap: https://betifysports.com/sitemap.xml"
+    ]
+    response = make_response("\n".join(lines))
+    response.headers["Content-Type"] = "text/plain"
+    return response
+
+
 @app.route('/sitemap.xml')
 def sitemap():
     # 1. Start with your main pages
