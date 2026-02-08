@@ -2,10 +2,10 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   {% for page in pages %}
   <url>
-    <loc>{{ page[0] }}</loc>
-    <lastmod>{{ page[1] }}</lastmod>
+    <loc>{{ page.loc }}</loc>
+    <lastmod>{{ page.lastmod }}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>{{ page[2] }}</priority>
+    <priority>{{ page.priority }}</priority>
   </url>
   {% endfor %}
 </urlset>

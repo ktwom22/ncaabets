@@ -405,10 +405,32 @@ def set_size():
 
 @app.route('/robots.txt')
 @app.route('/sitemap.xml')
-def static_from_root():
-    # This just sends the physical file from your static folder
-    # No database queries, so it won't crash!
-    return send_from_directory(app.static_folder, request.path[1:])
+def sitemap():
+    # 1. Start with your main pages
+    today = datetime.now().strftime('%Y-%m-%d')
+    pages = [
+        {'loc': 'https://betifysports.com/', 'lastmod': today, 'priority': '1.0'},
+        {'loc': 'https://betifysports.com/archive', 'lastmod': today, 'priority': '0.8'}
+    ]
+
+    # 2. Add your picks automatically
+    # Replace 'all_picks' with your actual variable name
+    try:
+        for game in all_picks:
+            pages.append({
+                'loc': f"https://betifysports.com/game/{game['id']}",
+                'lastmod': game['date'], # Uses the original date of the pick
+                'priority': '0.6'
+            })
+    except NameError:
+        # If all_picks isn't ready yet, it just serves the main pages
+        pass
+
+    # 3. Create the XML response
+    sitemap_xml = render_template('sitemap_template.xml', pages=pages)
+    response = make_response(sitemap_xml)
+    response.headers["Content-Type"] = "application/xml"
+    return response
 
 if __name__ == '__main__':
     with app.app_context():
