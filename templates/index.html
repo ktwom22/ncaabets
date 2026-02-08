@@ -34,27 +34,27 @@
 
         body {
             background-color: var(--bg); color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow-x: hidden;
             padding-bottom: 80px;
         }
 
-        /* --- PAYWALL & BLUR --- */
+        /* --- PAYWALL & UI --- */
         .paywall-container { position: relative; overflow: hidden; }
         .content-blurred { filter: blur(14px); pointer-events: none; user-select: none; }
         .paywall-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.75);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             z-index: 100; text-align: center; padding: 20px;
         }
         .unlock-btn {
             background: var(--accent); color: white; border: none;
             padding: 12px 25px; border-radius: 8px; font-weight: 800;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: 0.2s;
             text-decoration: none;
         }
-        .unlock-btn:hover { transform: scale(1.05); color: white; }
+        .unlock-btn:hover { transform: translateY(-2px); color: white; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
 
         /* --- TICKER --- */
         .ticker-wrap {
@@ -65,107 +65,92 @@
         .ticker { display: flex; white-space: nowrap; animation: ticker-move 90s linear infinite; color: #fff; }
         .ticker:hover { animation-play-state: paused; }
         @keyframes ticker-move { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ticker-item { display: inline-flex; align-items: center; padding: 0 40px; border-right: 1px solid #444; height: 45px; }
-        .espn-tag { font-size: 0.65rem; font-weight: 900; color: var(--espn-red); letter-spacing: 1px; margin-right: 10px; }
-        .tick-logo { width: 22px; height: 22px; margin: 0 8px; object-fit: contain; }
-        .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; font-size: 1rem; }
-        .tick-abbr { font-weight: 800; font-size: 0.75rem; color: #ccc; text-transform: uppercase; }
+        .ticker-item { display: inline-flex; align-items: center; padding: 0 30px; border-right: 1px solid #333; height: 45px; }
+        .espn-tag { font-size: 0.6rem; font-weight: 900; color: var(--espn-red); letter-spacing: 1px; margin-right: 10px; }
+        .tick-logo { width: 20px; height: 20px; margin: 0 8px; object-fit: contain; }
+        .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; }
 
-        /* --- 3D CARD ANIMATION --- */
-        .game-container { perspective: 1200px; height: 540px; margin-bottom: 20px; cursor: pointer; }
-        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
+        /* --- 3D INTERFACE --- */
+        .game-container { perspective: 1200px; height: 520px; margin-bottom: 20px; }
+        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back {
             position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
             border-radius: 12px; background: var(--card); border: 1px solid var(--border);
             display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
-        .card-back { transform: rotateY(180deg); padding: 0; background: #fff; }
-        .back-header { background: var(--accent); color: white; padding: 15px; font-weight: 800; font-size: 0.8rem; letter-spacing: 1px; }
+        .card-back { transform: rotateY(180deg); background: #fff; }
+        .back-header { background: #343a40; color: white; padding: 12px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* --- BADGES --- */
-        .lock-badge { position: absolute; top: 10px; left: 10px; background: #000; color: #ffd700; padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900; z-index: 10; letter-spacing: 1px; border: 1px solid #ffd700; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-        .bg-play { background: var(--success); color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
-        .bg-fade { background: var(--border); color: var(--text); padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
+        /* --- BADGES & STATS --- */
+        .lock-badge {
+            position: absolute; top: 12px; left: 12px; background: #000; color: #ffd700;
+            padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900;
+            z-index: 10; border: 1px solid #ffd700; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .bg-play { background: var(--success); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
+        .bg-fade { background: var(--border); color: var(--text); padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
 
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex-grow: 1; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; }
         .stat-column { padding: 15px; border-right: 1px solid var(--border); }
-        .stat-column h4 { font-size: 0.85rem; font-weight: 800; margin-bottom: 15px; color: var(--text); border-bottom: 2px solid var(--bg); padding-bottom: 5px; }
-        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.75rem; }
-        .stat-label { color: var(--locked); font-weight: 600; }
-        .stat-value { font-weight: 800; color: var(--text); }
+        .stat-column:last-child { border-right: none; }
+        .stat-column h4 { font-size: 0.8rem; font-weight: 800; margin-bottom: 12px; border-bottom: 2px solid var(--bg); padding-bottom: 4px; }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.75rem; }
+        .stat-label { color: var(--locked); }
+        .stat-value { font-weight: 700; }
 
-        .t-logo { width: 75px; height: 75px; object-fit: contain; background: rgba(0,0,0,0.03); border-radius: 10px; display: block; margin: 0 auto; }
-        .proj-val { font-size: 2.2rem; font-weight: 900; color: var(--text); display: block; line-height: 1; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
+        .t-logo { width: 65px; height: 65px; object-fit: contain; padding: 5px; background: #f9f9f9; border-radius: 8px; }
+        .proj-val { font-size: 2rem; font-weight: 900; color: #333; display: block; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); }
 
-        @keyframes greenFlash { from { color: var(--success); font-weight: 900; } to { color: var(--accent); } }
-        .score-update-flash { animation: greenFlash 2s ease-out; }
-
-        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s ease; z-index: 2000; overflow-y: auto; border-right: 1px solid var(--border); box-shadow: 10px 0 20px rgba(0,0,0,0.1); }
+        /* --- SIDEBARS & FAB --- */
+        .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 2000; overflow-y: auto; box-shadow: 10px 0 30px rgba(0,0,0,0.15); }
         .stat-card-mini { background: var(--sub-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); }
 
-        .fab-container { position: fixed; bottom: 25px; left: 20px; z-index: 3000; display: flex; gap: 10px; }
-        .fab { width: 65px; height: 65px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-size: 0.6rem; }
+        .fab-container { position: fixed; bottom: 25px; left: 20px; z-index: 3000; display: flex; gap: 12px; }
+        .fab { width: 60px; height: 60px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.55rem; transition: 0.2s; }
+        .fab:hover { transform: scale(1.1); }
         .fab-parlay { background: #6f42c1; }
 
         .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 
-        .news-sidebar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: sticky; top: 130px; }
-        .parlay-leg { display: none; }
+        @keyframes greenFlash { 0% { background-color: rgba(40, 167, 69, 0.2); } 100% { background-color: transparent; } }
+        .score-update-flash { animation: greenFlash 2s ease-out; }
 
-        .filter-bar { padding: 10px 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-        .btn-filter { border-radius: 20px; font-size: 0.75rem; font-weight: 800; padding: 6px 15px; text-transform: uppercase; }
-        .disabled { pointer-events: none; opacity: 0.6; }
+        .filter-bar { padding: 15px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        .btn-filter { border-radius: 20px; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; text-transform: uppercase; transition: 0.2s; }
+        .disabled { pointer-events: none; opacity: 0.5; filter: grayscale(1); }
     </style>
 </head>
 <body>
 
     <div class="ticker-wrap">
         <div class="ticker">
-            <div class="ticker-item"><span class="espn-tag">LIVE VIA ESPN</span></div>
+            <div class="ticker-item"><span class="espn-tag">LIVE DATA ENGINE</span></div>
             {% for g in games %}
                 <div class="ticker-item">
                     <img src="{{ g.Left_Logo }}" class="tick-logo">
-                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[0][:3] }}</span>
                     <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
-                    <span class="tick-abbr">{{ g.Matchup.split(' @ ')[1][:3] }}</span>
                     <img src="{{ g.Right_Logo }}" class="tick-logo">
                 </div>
             {% endfor %}
         </div>
     </div>
 
-    <nav class="navbar navbar-light bg-white border-bottom p-3">
-        <div class="container d-flex justify-content-between align-items-center">
-            <span class="fw-bold text-dark">EDGE ENGINE <span style="color:var(--accent)">PRO</span></span>
-            <div class="d-flex align-items-center gap-3">
-                <div class="d-none d-sm-block text-end">
-                    <small id="sync-timer" class="text-muted d-block" style="font-size: 0.6rem;">SYSTEM READY</small>
-                </div>
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-light border dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown" style="font-size: 0.7rem;">ACCOUNT</button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        {% if current_user.is_authenticated %}
-                            <li><a class="dropdown-item small" href="/billing-portal">Billing</a></li>
-                            <li><a class="dropdown-item small text-danger" href="{{ url_for('logout') }}">Logout</a></li>
-                        {% else %}
-                            <li><a class="dropdown-item small" href="/login">Login</a></li>
-                        {% endif %}
-                    </ul>
-                </div>
-            </div>
+    <nav class="navbar navbar-light bg-white border-bottom sticky-top shadow-sm" style="top: 45px;">
+        <div class="container d-flex justify-content-between">
+            <span class="fw-bold">EDGE ENGINE <span class="text-primary">PRO</span></span>
+            <div id="sync-timer" class="text-muted fw-bold" style="font-size: 0.6rem;">INITIALIZING...</div>
         </div>
     </nav>
 
-    <div class="bg-white border-bottom shadow-sm">
+    <div class="bg-white border-bottom">
         <div class="container filter-bar">
             {% set active_filter = request.args.get('filter', 'all') %}
-            <a href="{{ url_for('index', filter='all') }}" class="btn btn-filter {% if active_filter == 'all' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">All Games</a>
-            <a href="{{ url_for('index', filter='top25') }}" class="btn btn-filter {% if active_filter == 'top25' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Top 25 Ranked</a>
-            <a href="{{ url_for('index', filter='top100') }}" class="btn btn-filter {% if active_filter == 'top100' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Top 100 Matchups</a>
+            <a href="{{ url_for('index', filter='all') }}" class="btn btn-filter {% if active_filter == 'all' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Full Board</a>
+            <a href="{{ url_for('index', filter='top25') }}" class="btn btn-filter {% if active_filter == 'top25' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Ranked Matchups</a>
         </div>
     </div>
 
@@ -173,66 +158,51 @@
         <div class="row">
             <div class="col-lg-9">
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4" id="games-grid">
-                    {% set displayed_count = namespace(value=0) %}
                     {% for g in games %}
                         {% set is_started = g.is_live or g.status == 'FINAL' or 'HALFTIME' in g.status %}
-                        {% set is_public_game = (g.stats.ra | int > 100) and (g.stats.rh | int > 100) %}
-                        {% set can_see_pick = is_premium or is_public_game %}
+                        {% set is_public = (g.stats.ra | int > 100) %}
+                        {% set can_see = is_premium or is_public %}
 
-                        {% set filter_match = true %}
-                        {% if active_filter == 'top25' %}
-                            {% if g.stats.ra | int > 25 and g.stats.rh | int > 25 %} {% set filter_match = false %} {% endif %}
-                        {% elif active_filter == 'top100' %}
-                            {% if g.stats.ra | int > 100 and g.stats.rh | int > 100 %} {% set filter_match = false %} {% endif %}
-                        {% endif %}
-
-                        {% if filter_match %}
-                        {% set displayed_count.value = displayed_count.value + 1 %}
-                        <div class="col" id="game-{{ g.ESPN_ID }}">
+                        <div class="col" id="game-card-{{ g.ESPN_ID }}">
                             <div class="game-container paywall-container">
-                                {% if not can_see_pick %}
+                                {% if not can_see %}
                                 <div class="paywall-overlay">
-                                    <div class="mb-2" style="font-size: 1.5rem;">🔒</div>
-                                    <h6 class="fw-bold text-dark mb-3">PREMIUM PICK LOCKED</h6>
-                                    <a href="/login" class="unlock-btn">UNLOCK ALL PICKS</a>
-                                    <small class="mt-2 text-muted" style="font-size: 0.6rem;">High-Tier Ranked Game</small>
+                                    <div class="h3">🔒</div>
+                                    <h6 class="fw-bold">PRO PICK LOCKED</h6>
+                                    <a href="/login" class="unlock-btn mt-2">UPGRADE TO VIEW</a>
                                 </div>
                                 {% endif %}
 
-                                <div class="card-inner shadow-sm {% if not can_see_pick %}content-blurred{% endif %}">
+                                <div class="card-inner shadow-sm {% if not can_see %}content-blurred{% endif %}">
                                     <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                        <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {% if is_started %}block{% else %}none{% endif %};">STATIONARY PICK</div>
+                                        <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {{ 'block' if is_started else 'none' }};">STATIONARY PICK</div>
 
                                         <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
-                                            <div>
-                                                <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                                <span class="ms-2 fw-bold" style="font-size: 0.85rem; color:var(--accent)">{{ g.Rec }}</span>
-                                            </div>
+                                            <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
                                             <div id="heartbeat-{{ g.ESPN_ID }}">
-                                                {% if g.is_live %}
-                                                <small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>
-                                                {% endif %}
+                                                {% if g.is_live %}<small class="text-danger fw-bold" style="font-size: 0.65rem;"><span class="pulse">●</span> LIVE</small>{% endif %}
                                             </div>
                                         </div>
 
                                         <div class="text-center p-4">
                                             <div class="mb-3">
-                                                <small class="text-muted d-block mb-1" style="font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase;">SELECTION</small>
-                                                <div class="fw-bold text-dark" style="font-size: 1.3rem;">
+                                                <small class="text-muted d-block mb-1" style="font-size: 0.55rem; letter-spacing: 1px;">AI SELECTION</small>
+                                                <div class="fw-bold" style="font-size: 1.25rem;">
                                                     <span id="pick-text-{{ g.ESPN_ID }}">{{ g.Pick }}</span>
                                                     <span class="text-warning" id="spread-{{ g.ESPN_ID }}">{{ g.Pick_Spread }}</span>
                                                 </div>
                                             </div>
+
                                             <div class="d-flex justify-content-around align-items-center">
-                                                <div class="text-center" style="width: 30%;">
+                                                <div class="text-center">
                                                     <img src="{{ g.Left_Logo }}" class="t-logo mb-2">
                                                     <span class="proj-val">{{ g.Left_Proj }}</span>
                                                 </div>
-                                                <div class="px-2 text-center" style="width: 40%;">
+                                                <div class="px-2">
                                                     <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
-                                                    <small class="text-muted d-block" style="font-size: 0.55rem; font-weight: bold;">LIVE SCORE</small>
+                                                    <small class="text-muted fw-bold" style="font-size: 0.5rem;">SCORE</small>
                                                 </div>
-                                                <div class="text-center" style="width: 30%;">
+                                                <div class="text-center">
                                                     <img src="{{ g.Right_Logo }}" class="t-logo mb-2">
                                                     <span class="proj-val">{{ g.Right_Proj }}</span>
                                                 </div>
@@ -241,64 +211,53 @@
 
                                         <div class="row g-0 border-top text-center p-3 mt-auto" style="background: var(--sub-bg);">
                                             <div class="col-6 border-end">
-                                                <small class="text-muted d-block" style="font-size: 0.65rem;">STATUS</small>
-                                                <span id="status-{{ g.ESPN_ID }}" style="font-size: 0.8rem; font-weight: 700; color: var(--accent);">{{ g.status }}</span>
+                                                <small class="text-muted d-block" style="font-size: 0.6rem;">GAME STATUS</small>
+                                                <span id="status-{{ g.ESPN_ID }}" class="fw-bold text-primary" style="font-size: 0.75rem;">{{ g.status }}</span>
                                             </div>
                                             <div class="col-6">
-                                                <small class="text-muted d-block" style="font-size: 0.65rem;">EDGE</small>
-                                                <b class="text-success" style="font-size: 1.1rem;">+{{ g.Edge }} PTS</b>
+                                                <small class="text-muted d-block" style="font-size: 0.6rem;">VALUE EDGE</small>
+                                                <b class="text-success">+{{ g.Edge }} PTS</b>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div class="card-back" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                        <div class="back-header text-center">SCOUTING METRICS</div>
+                                        <div class="back-header text-center">Power Rankings & SOS</div>
                                         <div class="stats-grid">
                                             <div class="stat-column">
                                                 <h4>AWAY</h4>
-                                                <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
                                             </div>
                                             <div class="stat-column">
                                                 <h4>HOME</h4>
-                                                <div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
                                             </div>
                                         </div>
-                                        <div class="p-3 border-top bg-light text-center">
-                                            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold w-100">ESPN BOX SCORE</a>
+                                        <div class="p-3 border-top">
+                                            <a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-dark w-100 fw-bold">ESPN TRACKER</a>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        {% endif %}
                     {% endfor %}
-
-                    {% if displayed_count.value == 0 %}
-                    <div class="col-12 text-center py-5">
-                        <h4 class="text-muted">No matchups found for this filter.</h4>
-                        <a href="{{ url_for('index', filter='all') }}" class="btn btn-primary mt-2">View All Games</a>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
 
             <div class="col-lg-3 d-none d-lg-block">
-                <div class="news-sidebar">
-                    <h6 class="fw-bold mb-3" style="letter-spacing: 2px;">ENGINE STATS</h6>
-                    <div class="stat-card-mini" style="background: var(--accent); color: white;">
-                        <small class="d-block opacity-75" style="font-size:0.6rem">LIFETIME WIN RATE</small>
-                        <span class="h3 fw-bold">{{ stats.PCT }}%</span>
-                    </div>
-                    <div class="mt-4">
-                        <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
+                <div class="stat-card-mini bg-primary text-white p-3">
+                    <small class="opacity-75">SEASON WIN RATE</small>
+                    <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
+                </div>
+                <div class="card shadow-sm mt-3">
+                    <div class="card-header fw-bold small">RECENT TRENDS</div>
+                    <div class="card-body p-2">
                         {% for r in last_10[:5] %}
-                        <div class="small mt-2 border-bottom pb-1">
-                            <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
-                            <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
+                        <div class="small border-bottom py-2">
+                            <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' }}">{{ r.Result }}</span>
+                            <b>{{ r.Pick }}</b>
                             <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
                         </div>
                         {% endfor %}
@@ -311,160 +270,142 @@
     <div id="stats-sidebar" class="slider">
         <div class="p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4 class="fw-bold mb-0">PERFORMANCE</h4>
+                <h5 class="fw-bold mb-0">PERFORMANCE</h5>
                 <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
             </div>
-            <div class="stat-card-mini" style="background: var(--accent); color: white;">
-                <small class="d-block opacity-75" style="font-size:0.6rem">LIFETIME WIN RATE</small>
-                <span class="h3 fw-bold">{{ stats.PCT }}%</span>
+
+            <div class="stat-card-mini bg-primary text-white p-3 mb-4">
+                <small class="opacity-75 d-block">SEASON WIN RATE</small>
+                <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
+                <div class="small mt-1">{{ stats.W }} Wins — {{ stats.L }} Losses</div>
             </div>
-            <div class="row g-2 my-4">
-                <div class="col-6"><div class="stat-card-mini text-center"><small>WINS</small><br><b class="h4 text-success">{{ stats.W }}</b></div></div>
-                <div class="col-6"><div class="stat-card-mini text-center"><small>LOSSES</small><br><b class="h4 text-danger">{{ stats.L }}</b></div></div>
-            </div>
-            <div class="mt-4">
-                <small class="text-muted fw-bold" style="font-size: 0.6rem;">RECENT RESULTS</small>
+
+            <h6 class="fw-bold small text-muted mb-3">RECENT TRENDS</h6>
+            <div class="list-group list-group-flush">
                 {% for r in last_10[:5] %}
-                <div class="small mt-2 border-bottom pb-1">
-                    <span class="badge {% if r.Result == 'WIN' %}bg-success{% else %}bg-danger{% endif %}" style="font-size:0.5rem">{{ r.Result }}</span>
-                    <span class="fw-bold">{{ r.Pick }} {{ r.Spread }}</span>
-                    <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
+                <div class="list-group-item bg-transparent px-0 py-3 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}">
+                            {{ r.Result }}
+                        </span>
+                        <small class="text-muted">{{ r.Date if r.Date else '' }}</small>
+                    </div>
+                    <div class="fw-bold">{{ r.Pick }} {{ r.Pick_Spread }}</div>
+                    <div class="text-muted" style="font-size: 0.75rem;">{{ r.Matchup }}</div>
                 </div>
                 {% endfor %}
             </div>
+
+            {% if not last_10 %}
+                <p class="text-muted small">No recent history found in archive.</p>
+            {% endif %}
         </div>
     </div>
 
     <div id="parlay-sidebar" class="slider">
         <div class="p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4 class="fw-bold mb-0">ENGINE PARLAY</h4>
-                <button class="btn-close" onclick="toggleS('parlay-sidebar')"></button>
-            </div>
-            {% if is_premium %}
-                <div class="mb-4">
-                    <label class="form-label fw-bold text-muted mb-1" style="font-size: 0.65rem;">SELECT PARLAY SIZE</label>
-                    <select class="form-select form-select-sm fw-bold border-primary" id="parlaySizeSelector" onchange="generateRandomParlay()">
-                        <option value="2">2-GAME PARLAY</option>
-                        <option value="3" selected>3-GAME PARLAY</option>
-                        <option value="4">4-GAME PARLAY</option>
-                    </select>
-                </div>
-                <div id="parlay-content">
-                    {% for p in top_plays[:15] %}
-                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' or 'HALFTIME' in p.status else 'false' }}">
-                        <div class="d-flex justify-content-between"><small class="fw-bold text-muted">{{ p.Matchup }}</small></div>
-                        <div class="h6 mt-1 mb-0 fw-bold">
-                            <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
-                            <span class="text-warning" id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
-                        </div>
+            <h5 class="fw-bold mb-3">AI PARLAY BUILDER</h5>
+            <div id="parlay-content">
+                {% for p in top_plays[:10] %}
+                <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
+                    <div class="small fw-bold">{{ p.Matchup }}</div>
+                    <div class="fw-bold text-primary">
+                        <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
+                        <span id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
                     </div>
-                    {% endfor %}
-                    <button id="parlay-refresh-btn" class="btn btn-sm btn-dark w-100 mt-2 mb-3 fw-bold" onclick="generateRandomParlay()">REFRESH PARLAY</button>
                 </div>
-            {% else %}
-                <div class="text-center mt-5"><p>PRO ACCESS REQUIRED</p></div>
-            {% endif %}
+                {% endfor %}
+                <button id="parlay-refresh-btn" class="btn btn-dark w-100 mt-3" onclick="generateRandomParlay()">NEW PARLAY</button>
+            </div>
         </div>
     </div>
 
     <div class="fab-container">
-        <button class="fab" onclick="toggleS('stats-sidebar')">📊<br>STATS</button>
-        <button class="fab fab-parlay" onclick="toggleS('parlay-sidebar')">🔥<br>PARLAY</button>
+        <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
+        <button class="fab fab-parlay" onclick="toggleS('parlay-sidebar')">PARLAY</button>
     </div>
 
     <script>
-        const IS_PREMIUM_USER = {{ 'true' if is_premium else 'false' }};
-        window.parlayLocked = false;
+        const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+        let parlayLocked = false;
 
         function toggleS(id) {
             const s = document.getElementById(id);
             const w = window.innerWidth < 600 ? '100%' : '350px';
-            const other = id === 'stats-sidebar' ? document.getElementById('parlay-sidebar') : document.getElementById('stats-sidebar');
-            other.style.width = '0';
-            s.style.width = (s.style.width === w) ? '0' : w;
+            const other = id === 'stats-sidebar' ? 'parlay-sidebar' : 'stats-sidebar';
+            document.getElementById(other).style.width = '0';
+            s.style.width = s.style.width === w ? '0' : w;
         }
 
         function generateRandomParlay() {
-            if (!IS_PREMIUM_USER || window.parlayLocked) return;
-            const size = parseInt(document.getElementById('parlaySizeSelector').value);
-            const allLegs = Array.from(document.querySelectorAll('.parlay-leg'));
-            const availableLegs = allLegs.filter(leg => leg.dataset.started === 'false');
-            if (availableLegs.length < size) return;
-            allLegs.forEach(leg => leg.style.display = 'none');
-            availableLegs.sort(() => 0.5 - Math.random()).slice(0, size).forEach(leg => leg.style.display = 'block');
+            if (parlayLocked) return;
+            const legs = Array.from(document.querySelectorAll('.parlay-leg'));
+            const available = legs.filter(l => l.dataset.started === 'false');
+            legs.forEach(l => l.style.display = 'none');
+            available.sort(() => 0.5 - Math.random()).slice(0, 3).forEach(l => l.style.display = 'block');
         }
 
-        async function updateScores() {
+        async function updateEngine() {
             try {
-                const res = await fetch('/api/updates');
-                const liveMap = await res.json();
+                const response = await fetch('/api/updates');
+                const dataMap = await response.json();
 
-                for (const key in liveMap) {
-                    const data = liveMap[key];
-                    const id = data.id;
+                for (const id in dataMap) {
+                    const game = dataMap[id];
+                    const scoreStr = `${game.s_away}-${game.s_home}`;
 
-                    const scoreEl = document.getElementById(`score-${id}`);
-                    const tickEl = document.getElementById(`tick-${id}`);
-                    const statusEl = document.getElementById(`status-${id}`);
-                    const lockEl = document.getElementById(`lock-${id}`);
-                    const heartbeatEl = document.getElementById(`heartbeat-${id}`);
-                    const scoreStr = `${data.s_away}-${data.s_home}`;
-
-                    // 1. UPDATE LIVE DATA (Always update scores/status)
-                    if (scoreEl && scoreEl.textContent !== scoreStr) {
-                        scoreEl.textContent = scoreStr;
-                        scoreEl.classList.add('score-update-flash');
-                        setTimeout(() => scoreEl.classList.remove('score-update-flash'), 2000);
+                    // Update Scores (Always)
+                    const sEl = document.getElementById(`score-${id}`);
+                    if (sEl && sEl.textContent !== scoreStr) {
+                        sEl.textContent = scoreStr;
+                        sEl.closest('.card-front').classList.add('score-update-flash');
+                        setTimeout(() => sEl.closest('.card-front').classList.remove('score-update-flash'), 2000);
                     }
-                    if (tickEl) tickEl.textContent = scoreStr;
-                    if (statusEl) statusEl.innerText = data.status;
 
-                    // 2. STATIONARY PICK LOGIC
-                    // Check if game has started based on state ('in' means in-progress) or status strings
-                    const hasStarted = (data.state === 'in' || data.status.includes('FINAL') || data.status.includes('HALFTIME'));
+                    const tEl = document.getElementById(`tick-${id}`);
+                    if (tEl) tEl.textContent = scoreStr;
+
+                    const statusEl = document.getElementById(`status-${id}`);
+                    if (statusEl) statusEl.innerText = game.status;
+
+                    // --- STATIONARY PICK LOGIC ---
+                    const hasStarted = (game.state === 'in' || game.status.includes('FINAL') || game.status.includes('HALFTIME'));
+                    const lockBadge = document.getElementById(`lock-${id}`);
 
                     if (hasStarted) {
-                        // Show the "STATIONARY PICK" lock badge
-                        if (lockEl) lockEl.style.display = "block";
+                        if (lockBadge) lockBadge.style.display = "block";
 
-                        // Ensure live heartbeat is shown
-                        if (heartbeatEl && data.state === 'in') {
-                             heartbeatEl.innerHTML = '<small class="text-danger fw-bold" style="font-size: 0.7rem;"><span class="pulse">●</span> LIVE</small>';
-                        }
-
-                        // Prevent Parlay from refreshing if a live leg is currently selected
+                        // If this game is in a parlay, lock the parlay from being refreshed
                         const pLeg = document.getElementById(`parlay-leg-${id}`);
                         if (pLeg && pLeg.style.display === 'block') {
-                            window.parlayLocked = true;
-                            const rBtn = document.getElementById('parlay-refresh-btn');
-                            if(rBtn) rBtn.classList.add('disabled');
+                            parlayLocked = true;
+                            document.getElementById('parlay-refresh-btn').classList.add('disabled');
                         }
                     } else {
-                        // ONLY update Pick text/spread if game has NOT started and lock badge is hidden
-                        const lockBadge = document.getElementById(`lock-${id}`);
+                        // ONLY update Pick/Spread if the game has NOT started (Lock badge is hidden)
                         if (!lockBadge || lockBadge.style.display === 'none') {
-                            const pickEl = document.getElementById(`pick-text-${id}`);
-                            const spreadEl = document.getElementById(`spread-${id}`);
-                            if (pickEl && data.pick) pickEl.innerText = data.pick;
-                            if (spreadEl && data.spread) spreadEl.innerText = data.spread;
+                            const pText = document.getElementById(`pick-text-${id}`);
+                            const sText = document.getElementById(`spread-${id}`);
+                            if (pText && game.pick) pText.innerText = game.pick;
+                            if (sText && game.spread) sText.innerText = game.spread;
 
-                            // Update Parlay legs that haven't started yet
-                            const pPick = document.getElementById(`parlay-pick-${id}`);
-                            const pSpread = document.getElementById(`parlay-spread-${id}`);
-                            if (pPick && data.pick) pPick.innerText = data.pick;
-                            if (pSpread && data.spread) pSpread.innerText = data.spread;
+                            // Update corresponding parlay text
+                            const ppText = document.getElementById(`parlay-pick-${id}`);
+                            const psText = document.getElementById(`parlay-spread-${id}`);
+                            if (ppText && game.pick) ppText.innerText = game.pick;
+                            if (psText && game.spread) psText.innerText = game.spread;
                         }
                     }
                 }
-                document.getElementById('sync-timer').innerHTML = `<span style="color: #28a745;">●</span> SYNCED: ${new Date().toLocaleTimeString()}`;
-            } catch (e) { console.warn("Sync failed", e); }
+                document.getElementById('sync-timer').innerHTML = `<span class="text-success">●</span> SYNCED ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+            } catch (err) { console.error("Sync Error:", err); }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (IS_PREMIUM_USER) generateRandomParlay();
-            setInterval(updateScores, 30000);
-        });
+        window.onload = () => {
+            generateRandomParlay();
+            setInterval(updateEngine, 30000); // Update every 30 seconds
+            updateEngine();
+        };
     </script>
 </body>
 </html>

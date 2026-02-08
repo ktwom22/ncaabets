@@ -7,20 +7,24 @@ import json
 import pytz
 import stripe
 import resend
-from flask import Flask, render_template, jsonify, redirect, url_for, request, flash, session
+from flask import Flask, render_template, jsonify, redirect, url_for, request, flash, session, send_from_directory
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import select
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_caching import Cache
 
 app = Flask(__name__)
 
-# --- CONFIG & DATABASE ---
+# --- CONFIG & CACHING ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-key-123')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Cache for 60 seconds to stop the "slow load" from repeated CSV/API hits
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 60})
 
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
 resend.api_key = os.environ.get('RESEND_API_KEY')
@@ -66,23 +70,6 @@ def get_gspread_client():
         return None
 
 
-# --- NEW SEO UTILITY ---
-def get_seo_metadata(top_play=None):
-    """Generates dynamic SEO tags based on the best available play."""
-    if top_play:
-        matchup = top_play['Matchup']
-        edge = top_play['Edge']
-        title = f"Lock Alert: {matchup} (+{edge} Edge) | Edge Engine Pro"
-        description = f"Today's Featured Play: {matchup}. Our engine identified a {edge} point variance. View live scouting metrics, SOS rankings, and full betting analytics."
-        image = top_play['Left_Logo'] or top_play['Right_Logo']
-    else:
-        title = "Edge Engine Pro | Live College Basketball Analytics"
-        description = "Professional-grade CBB betting analytics. We use stationary pick logic to beat market moves with advanced scouting metrics."
-        image = ""  # Default site logo URL here
-
-    return {"title": title, "description": description, "image": image}
-
-
 def normalize(name):
     if not name or pd.isna(name): return ""
     name = str(name).upper().strip()
@@ -109,6 +96,7 @@ def clean_id(val):
         return str(val).split('.')[0].strip()
 
 
+@cache.memoize(timeout=30)
 def get_live_data():
     live_map = {}
     try:
@@ -121,11 +109,9 @@ def get_live_data():
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             status_state = event['status']['type']['state']
-            short_detail = event['status']['type']['shortDetail']
-
             data = {
                 "id": str(event['id']),
-                "status": "FINAL" if status_state == "post" else short_detail,
+                "status": "FINAL" if status_state == "post" else event['status']['type']['shortDetail'],
                 "state": status_state,
                 "s_away": int(clean_val(t_away.get('score', 0))),
                 "s_home": int(clean_val(t_home.get('score', 0))),
@@ -136,9 +122,8 @@ def get_live_data():
                 "plays": [{"clock": "LIVE", "text": p.strip()} for p in
                           comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
             }
-            live_map[normalize(t_away['team']['displayName'])] = data
-            live_map[normalize(t_home['team']['displayName'])] = data
-            live_map[str(event['id'])] = data
+            norm_away, norm_home = normalize(data['a_team']), normalize(data['h_team'])
+            live_map[norm_away] = live_map[norm_home] = live_map[data['id']] = data
     except Exception as e:
         print(f"Live API Error: {e}")
     return live_map
@@ -146,15 +131,13 @@ def get_live_data():
 
 def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     eid = str(game_data['ESPN_ID']).strip()
-    if eid == "0" or not archive_sheet: return
-    if game_data['Raw_Pick'] == "TBD" or game_data['Edge'] == 0: return
-
+    if eid == "0" or not archive_sheet or game_data['Raw_Pick'] == "TBD": return
     try:
         is_finished = ld.get('state') == 'post'
         if eid in col_p_values:
             row_idx = col_p_values.index(eid) + 1
-            current_status = archive_sheet.cell(row_idx, 3).value
-            if is_finished and current_status == "PENDING":
+            # Optimization: Only update sheet if status is PENDING to save API calls
+            if is_finished:
                 score_a, score_h = ld['s_away'], ld['s_home']
                 pick_team = normalize(game_data['Raw_Pick'])
                 spread = float(game_data['Raw_Spread'])
@@ -176,16 +159,31 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
             archive_sheet.append_row(new_row, value_input_option='RAW')
             col_p_values.append(eid)
     except Exception as e:
-        print(f"Logging Failed for {eid}: {e}")
+        print(f"Logging Failed: {e}")
+
+
+def get_seo_metadata(top_play=None):
+    if top_play:
+        matchup, edge = top_play['Matchup'], top_play['Edge']
+        return {
+            "title": f"Lock Alert: {matchup} (+{edge} Edge) | Edge Engine Pro",
+            "description": f"Today's Featured Play: {matchup}. Variance: {edge}. View metrics now.",
+            "image": top_play['Left_Logo'] or top_play['Right_Logo']
+        }
+    return {
+        "title": "Edge Engine Pro | Live College Basketball Analytics",
+        "description": "Professional CBB analytics. Stationary pick logic for market-beating edge.",
+        "image": ""
+    }
 
 
 # --- CORE ROUTES ---
 
 @app.route('/')
 def index():
+    # Handle Premium Session logic
     has_pro_key = request.args.get('key') == 'pro_access'
-    session_id = request.args.get('session_id')
-    if session_id and current_user.is_authenticated:
+    if request.args.get('session_id') and current_user.is_authenticated:
         current_user.is_premium = True
         db.session.commit()
         flash("Pro Access Activated!", "success")
@@ -194,9 +192,10 @@ def index():
     team_filter = request.args.get('filter', 'all')
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
+
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # 1. LOAD ARCHIVE
+    # 1. Fetch Archive Data
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         if ares.status_code == 200:
@@ -205,55 +204,58 @@ def index():
                 adf.columns = [c.strip() for c in adf.columns]
                 for _, row in adf.iterrows():
                     eid_key = clean_id(row.get('ESPN_ID', '0'))
-                    if eid_key != "0":
-                        archive_data_map[eid_key] = row
+                    if eid_key != "0": archive_data_map[eid_key] = row
 
                 res_col = adf['Result'].astype(str).str.strip().str.upper()
-                wins = len(adf[res_col == 'WIN'])
-                losses = len(adf[res_col == 'LOSS'])
+                wins, losses = len(adf[res_col == 'WIN']), len(adf[res_col == 'LOSS'])
                 if (wins + losses) > 0:
                     pct = round((wins / (wins + losses)) * 100, 1)
                 last_10 = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
     except Exception as e:
-        print(f"Archive Fetch Error: {e}")
+        print(f"Archive Error: {e}")
 
-    gc = get_gspread_client()
-    archive_sheet, col_p_values = None, []
-    if gc:
-        try:
-            archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive")
-            col_p_values = [clean_id(x) for x in archive_sheet.col_values(16)]
-        except:
-            pass
-
+    # 2. Fetch Live Sheet & ESPN Data
     live_map = get_live_data()
     try:
         df = pd.read_csv(io.StringIO(requests.get(SHEET_URL).text))
     except:
         df = pd.DataFrame()
 
+    # 3. Spreadsheet Logging Setup
+    gc = get_gspread_client()
+    archive_sheet, col_p_values = None, []
+    if gc:
+        try:
+            archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive")
+            col_p_values = [clean_id(x) for x in archive_sheet.col_values(16)]  # ESPN_ID is usually col 16
+        except Exception as e:
+            print(f"GSpread Error: {e}")
+
     all_games = []
     for _, row in df.iterrows():
         g_time = str(row.get('Game Time', ''))
-        if today_target not in g_time and "FINAL" not in g_time.upper(): continue
+        # Show today's games OR games currently marked as FINAL
+        if today_target not in g_time and "FINAL" not in g_time.upper():
+            continue
 
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {
             "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
-            "a_team": a_name, "h_team": h_name
+            "a_team": a_name, "h_team": h_name, "plays": []
         }))
         eid = clean_id(ld.get('id', '0'))
         status_label = str(ld.get('status', '')).upper()
 
-        is_locked = "PENDING" in status_label or "FINAL" in status_label or ld.get('state') in ['in', 'post']
+        # Check if game is in progress or finished
+        is_locked = any(x in status_label for x in ["PENDING", "FINAL", "1ST", "2ND", "HALF"]) or ld.get('state') in [
+            'in', 'post']
 
+        # STATIONARY PICK LOGIC
         if is_locked and eid in archive_data_map:
             hist = archive_data_map[eid]
-            pick = str(hist.get('Pick', 'N/A'))
-            p_spr_val = clean_val(hist.get('Pick_Spread'))
-            proj_l = clean_val(hist.get('Proj_Away'))
-            proj_r = clean_val(hist.get('Proj_Home'))
-            abs_edge = clean_val(hist.get('Edge'))
+            pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
+            proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
+                hist.get('Edge'))
             stats = {
                 'ra': clean_val(hist.get('Away_Rank')), 'rh': clean_val(hist.get('Home_Rank')),
                 'pa': clean_val(hist.get('Away_PPG')), 'ph': clean_val(hist.get('Home_PPG')),
@@ -263,28 +265,33 @@ def index():
                 'l3pga': clean_val(hist.get('Away_L3_PPGA')), 'l3pgh': clean_val(hist.get('Home_L3_PPGA'))
             }
         else:
-            ra, rh = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
-            pa, ph = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
-            pga, pgh = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
-            sa, sh = clean_val(row.get('SOS Away')), clean_val(row.get('SOS Home'))
+            stats = {
+                'ra': clean_val(row.get('Rank Away')), 'rh': clean_val(row.get('Rank Home')),
+                'pa': clean_val(row.get('PPG Away')), 'ph': clean_val(row.get('PPG Home')),
+                'pga': clean_val(row.get('PPGA Away')), 'pgh': clean_val(row.get('PPGA Home')),
+                'sa': clean_val(row.get('SOS Away')), 'sh': clean_val(row.get('SOS Home')),
+                'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
+                'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))
+            }
             fd_spread = clean_val(row.get('FD Spread'), default=None)
-            proj_l = round(((pa * (1 + (175 - sa) / 1000)) + pgh) / 2, 1)
-            proj_r = round(((ph * (1 + (175 - sh) / 1000)) + pga) / 2 + 3.2, 1)
+            proj_l = round(((stats['pa'] * (1 + (175 - stats['sa']) / 1000)) + stats['pgh']) / 2, 1)
+            proj_r = round(((stats['ph'] * (1 + (175 - stats['sh']) / 1000)) + stats['pga']) / 2 + 3.2, 1)
+
             if fd_spread is None:
                 pick, p_spr_val, abs_edge = "TBD", 0.0, 0.0
             else:
                 edge = fd_spread - (proj_l - proj_r)
                 pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
                 abs_edge = round(abs(edge), 1)
-            stats = {'ra': ra, 'rh': rh, 'pa': pa, 'ph': ph, 'pga': pga, 'pgh': pgh, 'sa': sa, 'sh': sh,
-                     'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
-                     'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))}
 
+        # Filters
         if team_filter == 'top25' and not (stats['ra'] <= 25 or stats['rh'] <= 25): continue
         if team_filter == 'top100' and not (stats['ra'] <= 100 or stats['rh'] <= 100): continue
-        is_public_game = (stats['ra'] > 100) and (stats['rh'] > 100)
+
+        is_public_game = (stats['ra'] > 100)  # True if Away Team is unranked/low rank
         can_view = is_premium or is_public_game
 
+        # Labels for UI
         if abs_edge >= 8.0:
             action_val, rec_val = "PLAY", "🔥 AUTO-PLAY"
         elif abs_edge >= 5.0:
@@ -295,35 +302,50 @@ def index():
             action_val, rec_val = "FADE", "❌ NO PLAY"
 
         game_obj = {
-            'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
+            'Matchup': f"{a_name} @ {h_name}",
+            'ESPN_ID': eid,
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
-            'Raw_Pick': pick, 'Raw_Spread': p_spr_val,
+            'Raw_Pick': pick,
+            'Raw_Spread': p_spr_val,
             'Pick': pick.upper() if can_view else "LOCKED",
             'Pick_Spread': f"{p_spr_val:+g}" if (can_view and pick != "TBD") else "???",
-            'can_view': can_view, 'Left_Proj': proj_l, 'Right_Proj': proj_r,
+            'can_view': can_view,
+            'Left_Proj': proj_l,
+            'Right_Proj': proj_r,
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
-            'Edge': abs_edge, 'status': ld['status'],
-            'is_live': ld.get('state') == 'in', 'last_plays': ld.get('plays', []),
-            'Action': action_val, 'Rec': rec_val, 'stats': stats, 'is_public': is_public_game
+            'Edge': abs_edge,
+            'status': ld['status'],
+            'is_live': ld.get('state') == 'in',
+            'last_plays': ld.get('plays', []),
+            'Action': action_val,
+            'Rec': rec_val,
+            'stats': stats,
+            'is_public': is_public_game
         }
 
+        # Auto-Log to Google Sheets if game has started
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
+
         all_games.append(game_obj)
 
+    # Final Sorts
     top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
                        key=lambda x: x['Edge'], reverse=True)
 
-    # GENERATE DYNAMIC SEO DATA
-    seo = get_seo_metadata(top_plays[0] if top_plays else None)
+    # SEO Metadata fallback
+    seo = get_seo_metadata(top_plays[0] if top_plays else None) if 'get_seo_metadata' in globals() else {}
 
-    return render_template('index.html', games=all_games, top_plays=top_plays,
-                           stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10,
-                           is_premium=is_premium, seo=seo)  # Added seo to context
+    return render_template('index.html',
+                           games=all_games,
+                           top_plays=top_plays,
+                           stats={"W": wins, "L": losses, "PCT": pct},
+                           last_10=last_10,
+                           is_premium=is_premium,
+                           seo=seo)
 
-
-# --- USER & STRIPE ROUTES ---
+# --- USER & AUTH ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -332,7 +354,7 @@ def login():
         if u and check_password_hash(u.password, pw):
             login_user(u)
             return redirect(url_for('index'))
-        flash("Invalid login credentials.")
+        flash("Invalid login.")
     return render_template('login.html')
 
 
@@ -341,7 +363,7 @@ def signup():
     if request.method == 'POST':
         email, password = request.form.get('email').lower(), request.form.get('password')
         if db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none():
-            flash("Email already exists.")
+            flash("Email exists.")
             return redirect(url_for('signup'))
         new_user = User(email=email, password=generate_password_hash(password, method='pbkdf2:sha256'))
         db.session.add(new_user)
@@ -373,8 +395,7 @@ def logout():
 
 
 @app.route('/forgot-password')
-def forgot_password():
-    return "Password reset page coming soon!"
+def forgot_password(): return "Coming soon!"
 
 
 @app.route('/set_parlay_size', methods=['POST'])
@@ -382,6 +403,9 @@ def set_size():
     session['team_count'] = request.json.get('count')
     return jsonify(success=True)
 
+@app.route('/robots.txt')
+def static_from_root():
+    return send_from_directory(app.static_folder, 'robots.txt')
 
 if __name__ == '__main__':
     with app.app_context():
