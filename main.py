@@ -405,28 +405,10 @@ def set_size():
 
 @app.route('/robots.txt')
 @app.route('/sitemap.xml')
-def sitemap():
-    # Fetch all games from your database (example query)
-    games = Game.query.all()
-
-    # Define your static pages (Home, Archive, etc.)
-    pages = []
-
-    # 1. Add your static main pages
-    pages.append(["https://betifysports.com/", datetime.now().strftime('%Y-%m-%d'), '1.0'])
-    pages.append(["https://betifysports.com/archive", datetime.now().strftime('%Y-%m-%d'), '0.8'])
-
-    # 2. Add your dynamic game pages (if you have them)
-    for game in games:
-        url = f"https://betifysports.com/game/{game.id}"
-        pages.append([url, game.date_updated.strftime('%Y-%m-%d'), '0.6'])
-
-    # Render the XML template
-    sitemap_xml = render_template('sitemap_template.xml', pages=pages)
-    response = make_response(sitemap_xml)
-    response.headers["Content-Type"] = "application/xml"
-
-    return response
+def static_from_root():
+    # This just sends the physical file from your static folder
+    # No database queries, so it won't crash!
+    return send_from_directory(app.static_folder, request.path[1:])
 
 if __name__ == '__main__':
     with app.app_context():
