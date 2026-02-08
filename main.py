@@ -418,6 +418,7 @@ def robots_txt():
 
 
 @app.route('/sitemap.xml')
+@app.route('/sitemap.xml/') # Add this line
 def sitemap():
     # 1. Start with your main pages
     today = datetime.now().strftime('%Y-%m-%d')
