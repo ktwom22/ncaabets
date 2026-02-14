@@ -252,13 +252,14 @@
 
             <div class="col-lg-3 d-none d-lg-block">
                 <div class="stat-card-mini bg-primary text-white p-3">
-                    <small class="opacity-75">SEASON WIN RATE</small>
-                    <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
+                    <small class="opacity-75">LAST 50 GAMES</small>
+                    <div class="h2 fw-bold mb-0">{{ stats.last_50_pct }}%</div>
+                    <div class="small mt-1">{{ stats.last_50_w }} Correct — {{ stats.last_50_l }} Losses</div>
                 </div>
                 <div class="card shadow-sm mt-3">
-                    <div class="card-header fw-bold small">RECENT TRENDS</div>
+                    <div class="card-header fw-bold small">LAST 10 OUTCOMES</div>
                     <div class="card-body p-2">
-                        {% for r in last_10[:5] %}
+                        {% for r in last_10 %}
                         <div class="small border-bottom py-2">
                             <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' }}">{{ r.Result }}</span>
                             <b>{{ r.Pick }}</b>
@@ -274,19 +275,19 @@
     <div id="stats-sidebar" class="slider">
         <div class="p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h5 class="fw-bold mb-0">PERFORMANCE</h5>
+                <h5 class="fw-bold mb-0">ANALYTICS</h5>
                 <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
             </div>
 
             <div class="stat-card-mini bg-primary text-white p-3 mb-4">
-                <small class="opacity-75 d-block">SEASON WIN RATE</small>
-                <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
-                <div class="small mt-1">{{ stats.W }} Wins — {{ stats.L }} Losses</div>
+                <small class="opacity-75 d-block">L50 WIN RATE</small>
+                <div class="h2 fw-bold mb-0">{{ stats.last_50_pct }}%</div>
+                <div class="small mt-1">{{ stats.last_50_w }} Wins — {{ stats.last_50_l }} Losses</div>
             </div>
 
-            <h6 class="fw-bold small text-muted mb-3">RECENT TRENDS</h6>
+            <h6 class="fw-bold small text-muted mb-3">LAST 10 TRENDS</h6>
             <div class="list-group list-group-flush">
-                {% for r in last_10[:5] %}
+                {% for r in last_10 %}
                 <div class="list-group-item bg-transparent px-0 py-3 border-bottom">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}">
@@ -299,10 +300,6 @@
                 </div>
                 {% endfor %}
             </div>
-
-            {% if not last_10 %}
-                <p class="text-muted small">No recent history found in archive.</p>
-            {% endif %}
         </div>
     </div>
 
@@ -317,10 +314,10 @@
                 <div class="mb-4">
                     <label class="small fw-bold text-muted mb-1">PARLAY SIZE</label>
                     <select id="parlay-size-select" class="form-select form-select-sm">
-                        <option value="2">2-Leg Parlay</option>
-                        <option value="3" selected>3-Leg Parlay</option>
-                        <option value="4">4-Leg Parlay</option>
-                        <option value="5">5-Leg Parlay</option>
+                        <option value="2">2-Leg</option>
+                        <option value="3" selected>3-Leg</option>
+                        <option value="4">4-Leg</option>
+                        <option value="5">5-Leg</option>
                     </select>
                 </div>
 
@@ -343,7 +340,7 @@
                 <div class="text-center py-5">
                     <div class="h1 mb-3">🔒</div>
                     <h5 class="fw-bold">PRO FEATURE</h5>
-                    <p class="text-muted small px-3">Upgrade to Edge Engine Pro to use the AI Parlay Builder and generate custom winning tickets.</p>
+                    <p class="text-muted small px-3">Upgrade to Edge Engine Pro to use the AI Parlay Builder.</p>
                     <a href="/login" class="unlock-btn d-inline-block mt-3">UPGRADE TO PRO</a>
                 </div>
             {% endif %}
@@ -369,71 +366,41 @@
 
         function generateRandomParlay() {
             if (!IS_PREMIUM || parlayLocked) return;
-
-            const sizeSelect = document.getElementById('parlay-size-select');
-            if (!sizeSelect) return;
-
-            const size = parseInt(sizeSelect.value);
+            const sizeSel = document.getElementById('parlay-size-select');
+            if (!sizeSel) return;
+            const size = parseInt(sizeSel.value);
             const legs = Array.from(document.querySelectorAll('.parlay-leg'));
             const available = legs.filter(l => l.dataset.started === 'false');
-
             legs.forEach(l => l.style.display = 'none');
-            const countToShow = Math.min(available.length, size);
-
-            available
-                .sort(() => 0.5 - Math.random())
-                .slice(0, countToShow)
-                .forEach(l => {
-                    l.style.display = 'block';
-                });
+            const count = Math.min(available.length, size);
+            available.sort(() => 0.5 - Math.random()).slice(0, count).forEach(l => l.style.display = 'block');
         }
 
         async function updateEngine() {
             try {
                 const response = await fetch('/api/updates');
                 const dataMap = await response.json();
-
                 for (const id in dataMap) {
                     const game = dataMap[id];
                     const scoreStr = `${game.s_away}-${game.s_home}`;
-
                     const sEl = document.getElementById(`score-${id}`);
                     if (sEl && sEl.textContent !== scoreStr) {
                         sEl.textContent = scoreStr;
                         sEl.closest('.card-front').classList.add('score-update-flash');
                         setTimeout(() => sEl.closest('.card-front').classList.remove('score-update-flash'), 2000);
                     }
-
-                    const tEl = document.getElementById(`tick-${id}`);
-                    if (tEl) tEl.textContent = scoreStr;
-
                     const statusEl = document.getElementById(`status-${id}`);
                     if (statusEl) statusEl.innerText = game.status;
-
                     const hasStarted = (game.state === 'in' || game.status.includes('FINAL') || game.status.includes('HALFTIME'));
                     const lockBadge = document.getElementById(`lock-${id}`);
-
                     if (hasStarted) {
                         if (lockBadge) lockBadge.style.display = "block";
-
                         const pLeg = document.getElementById(`parlay-leg-${id}`);
                         if (pLeg && pLeg.style.display === 'block') {
                             pLeg.dataset.started = "true";
                             parlayLocked = true;
                             const btn = document.getElementById('parlay-refresh-btn');
                             if (btn) btn.classList.add('disabled');
-                        }
-                    } else {
-                        if (!lockBadge || lockBadge.style.display === 'none') {
-                            const pText = document.getElementById(`pick-text-${id}`);
-                            const sText = document.getElementById(`spread-${id}`);
-                            if (pText && game.pick) pText.innerText = game.pick;
-                            if (sText && game.spread) sText.innerText = game.spread;
-
-                            const ppText = document.getElementById(`parlay-pick-${id}`);
-                            const psText = document.getElementById(`parlay-spread-${id}`);
-                            if (ppText && game.pick) ppText.innerText = game.pick;
-                            if (psText && game.spread) psText.innerText = game.spread;
                         }
                     }
                 }

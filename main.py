@@ -34,8 +34,8 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 # --- MATH CONSTANTS ---
-HCA = 3.25  # Home Court Advantage
-RANK_INFLUENCE = 0.05  # 0.05 points per rank spot gap (100 spots = 5 points)
+HCA = 3.25
+RANK_INFLUENCE = 0.05
 
 
 # --- DATABASE MODELS ---
@@ -181,22 +181,38 @@ def index():
     team_filter = request.args.get('filter', 'all')
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
-    archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # 1. Fetch Archive
+    archive_data_map = {}
+    stats_out = {"last_50_w": 0, "last_50_l": 0, "last_50_pct": 0}
+    last_10 = []
+
+    # 1. Fetch & Process Archive (Last 50 Logic)
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         if ares.status_code == 200:
             adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
+
+            # Map for stationary pick lookups
             for _, row in adf.iterrows():
                 eid_key = clean_id(row.get('ESPN_ID', '0'))
                 if eid_key != "0": archive_data_map[eid_key] = row
-            res_col = adf['Result'].astype(str).str.strip().str.upper()
-            wins, losses = len(adf[res_col == 'WIN']), len(adf[res_col == 'LOSS'])
-            if (wins + losses) > 0: pct = round((wins / (wins + losses)) * 100, 1)
-            last_10 = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
-    except:
-        pass
+
+            # Filter for completed games only
+            completed = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].copy()
+            completed['Date'] = pd.to_datetime(completed['Date'], errors='coerce')
+            completed = completed.sort_values('Date', ascending=False)
+
+            # Last 50 Stats
+            l50 = completed.head(50)
+            l50_w = len(l50[l50['Result'] == 'WIN'])
+            l50_l = len(l50[l50['Result'] == 'LOSS'])
+            denom = (l50_w + l50_l)
+            l50_pct = round((l50_w / denom) * 100, 1) if denom > 0 else 0
+
+            stats_out = {"last_50_w": l50_w, "last_50_l": l50_l, "last_50_pct": l50_pct}
+            last_10 = completed.head(10).to_dict('records')
+    except Exception as e:
+        print(f"Archive Error: {e}")
 
     # 2. Fetch Live Sheet
     live_map = get_live_data()
@@ -205,7 +221,7 @@ def index():
     except:
         df = pd.DataFrame()
 
-    # 3. GSpread
+    # 3. GSpread Client
     gc = get_gspread_client()
     archive_sheet, col_p_values = None, []
     if gc:
@@ -226,12 +242,11 @@ def index():
             "a_team": a_name, "h_team": h_name, "plays": []
         }))
         eid = clean_id(ld.get('id', '0'))
-        is_locked = any(
-            x in str(ld.get('status', '')).upper() for x in ["PENDING", "FINAL", "1ST", "2ND", "HALF"]) or ld.get(
+        is_started = any(x in str(ld.get('status', '')).upper() for x in ["FINAL", "1ST", "2ND", "HALF"]) or ld.get(
             'state') in ['in', 'post']
 
-        # STATIONARY PICK LOGIC
-        if is_locked and eid in archive_data_map:
+        # STATIONARY PICK LOGIC: If game started, pull from Archive to lock picks
+        if is_started and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
             proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
@@ -240,12 +255,9 @@ def index():
                 'ra': clean_val(hist.get('Away_Rank')), 'rh': clean_val(hist.get('Home_Rank')),
                 'sa': clean_val(hist.get('Away_SOS')), 'sh': clean_val(hist.get('Home_SOS')),
                 'pa': clean_val(hist.get('Away_PPG')), 'ph': clean_val(hist.get('Home_PPG')),
-                'l3pa': clean_val(hist.get('Away_L3_PPG')), 'l3ph': clean_val(hist.get('Home_L3_PPG')),
-                'pga': clean_val(hist.get('Away_PPGA')), 'pgh': clean_val(hist.get('Home_PPGA')),
-                'l3pga': clean_val(hist.get('Away_L3_PPGA')), 'l3pgh': clean_val(hist.get('Home_L3_PPGA'))
+                'pga': clean_val(hist.get('Away_PPGA')), 'pgh': clean_val(hist.get('Home_PPGA'))
             }
         else:
-            # Map Stats from G thru R
             stats = {
                 'ra': clean_val(row.get('Rank Away')), 'rh': clean_val(row.get('Rank Home')),
                 'sa': clean_val(row.get('SOS Away')), 'sh': clean_val(row.get('SOS Home')),
@@ -255,13 +267,11 @@ def index():
                 'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))
             }
 
-            # --- GEOMETRIC MATH LOGIC ---
+            # Geometric Math
             away_off = (stats['pa'] + stats['l3pa']) / 2
             home_def = (stats['pgh'] + stats['l3pgh']) / 2
             home_off = (stats['ph'] + stats['l3ph']) / 2
             away_def = (stats['pga'] + stats['l3pga']) / 2
-
-            # Rank Boost (AGGRESSIVE 0.05)
             rank_gap = stats['rh'] - stats['ra']
             boost = rank_gap * RANK_INFLUENCE
 
@@ -278,14 +288,7 @@ def index():
                 abs_edge = round(abs(edge_val), 1)
 
         can_view = is_premium or (stats['ra'] > 100)
-        if abs_edge >= 8.0:
-            act, rec = "PLAY", "🔥 AUTO-PLAY"
-        elif abs_edge >= 5.0:
-            act, rec = "PLAY", "✅ STRONG"
-        elif abs_edge >= 3.0:
-            act, rec = "PLAY", "⚠️ LOW"
-        else:
-            act, rec = "FADE", "❌ NO PLAY"
+        act = "PLAY" if abs_edge >= 3.0 else "FADE"
 
         game_obj = {
             'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
@@ -297,18 +300,23 @@ def index():
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
             'Edge': abs_edge, 'status': ld['status'], 'is_live': ld.get('state') == 'in',
-            'last_plays': ld.get('plays', []), 'Action': act, 'Rec': rec,
-            'stats': stats,  # Accessible in HTML as game.stats.pa, etc.
-            'fd_total': row.get('FD Total')
+            'Action': act, 'stats': stats
         }
-        if eid != "0" and ld.get('state') in ['in', 'post']: auto_log_game(game_obj, stats, ld, archive_sheet,
-                                                                           col_p_values)
+
+        if eid != "0" and ld.get('state') in ['in', 'post']:
+            auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
+
         all_games.append(game_obj)
 
     top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
                        key=lambda x: x['Edge'], reverse=True)
-    return render_template('index.html', games=all_games, top_plays=top_plays,
-                           stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=is_premium,
+
+    return render_template('index.html',
+                           games=all_games,
+                           top_plays=top_plays,
+                           stats=stats_out,
+                           last_10=last_10,
+                           is_premium=is_premium,
                            seo=get_seo_metadata(top_plays[0] if top_plays else None))
 
 
@@ -317,8 +325,9 @@ def index():
 def login():
     if request.method == 'POST':
         u = db.session.execute(select(User).filter_by(email=request.form.get('email').lower())).scalar_one_or_none()
-        if u and check_password_hash(u.password, request.form.get('password')): login_user(u); return redirect(
-            url_for('index'))
+        if u and check_password_hash(u.password, request.form.get('password')):
+            login_user(u)
+            return redirect(url_for('index'))
     return render_template('login.html')
 
 
@@ -327,8 +336,8 @@ def signup():
     if request.method == 'POST':
         u = User(email=request.form.get('email').lower(),
                  password=generate_password_hash(request.form.get('password'), method='pbkdf2:sha256'))
-        db.session.add(u);
-        db.session.commit();
+        db.session.add(u)
+        db.session.commit()
         login_user(u)
         try:
             checkout = stripe.checkout.Session.create(
@@ -342,7 +351,9 @@ def signup():
 
 
 @app.route('/logout')
-def logout(): logout_user(); return redirect(url_for('login'))
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 
 if __name__ == '__main__':
