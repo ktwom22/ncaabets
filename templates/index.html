@@ -228,11 +228,15 @@
                                                 <h4>AWAY</h4>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">DEF</span><span class="stat-value">{{ g.stats.pga }}</span></div>
                                             </div>
                                             <div class="stat-column">
                                                 <h4>HOME</h4>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
+                                                <div class="stat-row"><span class="stat-label">DEF</span><span class="stat-value">{{ g.stats.pgh }}</span></div>
                                             </div>
                                         </div>
                                         <div class="p-3 border-top">
@@ -304,19 +308,45 @@
 
     <div id="parlay-sidebar" class="slider">
         <div class="p-4">
-            <h5 class="fw-bold mb-3">AI PARLAY BUILDER</h5>
-            <div id="parlay-content">
-                {% for p in top_plays[:10] %}
-                <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' else 'false' }}">
-                    <div class="small fw-bold">{{ p.Matchup }}</div>
-                    <div class="fw-bold text-primary">
-                        <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
-                        <span id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
-                    </div>
-                </div>
-                {% endfor %}
-                <button id="parlay-refresh-btn" class="btn btn-dark w-100 mt-3" onclick="generateRandomParlay()">NEW PARLAY</button>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">AI PARLAY BUILDER</h5>
+                <button class="btn-close" onclick="toggleS('parlay-sidebar')"></button>
             </div>
+
+            {% if is_premium %}
+                <div class="mb-4">
+                    <label class="small fw-bold text-muted mb-1">PARLAY SIZE</label>
+                    <select id="parlay-size-select" class="form-select form-select-sm">
+                        <option value="2">2-Leg Parlay</option>
+                        <option value="3" selected>3-Leg Parlay</option>
+                        <option value="4">4-Leg Parlay</option>
+                        <option value="5">5-Leg Parlay</option>
+                    </select>
+                </div>
+
+                <div id="parlay-content">
+                    {% for p in top_plays[:10] %}
+                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg"
+                         id="parlay-leg-{{ p.ESPN_ID }}"
+                         data-started="{{ 'true' if p.is_live or p.status == 'FINAL' or 'HALFTIME' in p.status else 'false' }}"
+                         style="display: none;">
+                        <div class="small fw-bold">{{ p.Matchup }}</div>
+                        <div class="fw-bold text-primary">
+                            <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
+                            <span id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <button id="parlay-refresh-btn" class="btn btn-dark w-100 mt-3" onclick="generateRandomParlay()">GENERATE NEW</button>
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <div class="h1 mb-3">🔒</div>
+                    <h5 class="fw-bold">PRO FEATURE</h5>
+                    <p class="text-muted small px-3">Upgrade to Edge Engine Pro to use the AI Parlay Builder and generate custom winning tickets.</p>
+                    <a href="/login" class="unlock-btn d-inline-block mt-3">UPGRADE TO PRO</a>
+                </div>
+            {% endif %}
         </div>
     </div>
 
@@ -338,11 +368,24 @@
         }
 
         function generateRandomParlay() {
-            if (parlayLocked) return;
+            if (!IS_PREMIUM || parlayLocked) return;
+
+            const sizeSelect = document.getElementById('parlay-size-select');
+            if (!sizeSelect) return;
+
+            const size = parseInt(sizeSelect.value);
             const legs = Array.from(document.querySelectorAll('.parlay-leg'));
             const available = legs.filter(l => l.dataset.started === 'false');
+
             legs.forEach(l => l.style.display = 'none');
-            available.sort(() => 0.5 - Math.random()).slice(0, 3).forEach(l => l.style.display = 'block');
+            const countToShow = Math.min(available.length, size);
+
+            available
+                .sort(() => 0.5 - Math.random())
+                .slice(0, countToShow)
+                .forEach(l => {
+                    l.style.display = 'block';
+                });
         }
 
         async function updateEngine() {
@@ -354,7 +397,6 @@
                     const game = dataMap[id];
                     const scoreStr = `${game.s_away}-${game.s_home}`;
 
-                    // Update Scores (Always)
                     const sEl = document.getElementById(`score-${id}`);
                     if (sEl && sEl.textContent !== scoreStr) {
                         sEl.textContent = scoreStr;
@@ -368,28 +410,26 @@
                     const statusEl = document.getElementById(`status-${id}`);
                     if (statusEl) statusEl.innerText = game.status;
 
-                    // --- STATIONARY PICK LOGIC ---
                     const hasStarted = (game.state === 'in' || game.status.includes('FINAL') || game.status.includes('HALFTIME'));
                     const lockBadge = document.getElementById(`lock-${id}`);
 
                     if (hasStarted) {
                         if (lockBadge) lockBadge.style.display = "block";
 
-                        // If this game is in a parlay, lock the parlay from being refreshed
                         const pLeg = document.getElementById(`parlay-leg-${id}`);
                         if (pLeg && pLeg.style.display === 'block') {
+                            pLeg.dataset.started = "true";
                             parlayLocked = true;
-                            document.getElementById('parlay-refresh-btn').classList.add('disabled');
+                            const btn = document.getElementById('parlay-refresh-btn');
+                            if (btn) btn.classList.add('disabled');
                         }
                     } else {
-                        // ONLY update Pick/Spread if the game has NOT started (Lock badge is hidden)
                         if (!lockBadge || lockBadge.style.display === 'none') {
                             const pText = document.getElementById(`pick-text-${id}`);
                             const sText = document.getElementById(`spread-${id}`);
                             if (pText && game.pick) pText.innerText = game.pick;
                             if (sText && game.spread) sText.innerText = game.spread;
 
-                            // Update corresponding parlay text
                             const ppText = document.getElementById(`parlay-pick-${id}`);
                             const psText = document.getElementById(`parlay-spread-${id}`);
                             if (ppText && game.pick) ppText.innerText = game.pick;
@@ -402,8 +442,8 @@
         }
 
         window.onload = () => {
-            generateRandomParlay();
-            setInterval(updateEngine, 30000); // Update every 30 seconds
+            if (IS_PREMIUM) generateRandomParlay();
+            setInterval(updateEngine, 30000);
             updateEngine();
         };
     </script>
