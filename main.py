@@ -47,7 +47,12 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    try:
+        return db.session.get(User, int(user_id))
+    except Exception as e:
+        db.session.rollback()
+        print(f"User load failed (likely missing column): {e}")
+        return None
 
 
 # --- GOOGLE SHEETS & LIVE API CONFIG ---
@@ -412,15 +417,18 @@ def sitemap():
     return response
 
 
-if __name__ == '__main__':
-    with app.app_context():
-        # --- RAILWAY DB HOTFIX ---
-        db.create_all()
-        try:
-            db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);'))
-            db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS stripe_id VARCHAR(100);'))
-            db.session.commit()
-        except Exception as e:
-            print(f"Migration check: {e}")
+# Create the app context and run migrations BEFORE the app starts
+with app.app_context():
+    db.create_all()
+    try:
+        # Check if reset_token exists, if not, add it
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);'))
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS stripe_id VARCHAR(100);'))
+        db.session.commit()
+        print("Database columns verified/added successfully.")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Migration check error: {e}")
 
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
