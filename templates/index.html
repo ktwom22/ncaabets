@@ -47,6 +47,9 @@
             --ticker-bg: #1a1a1a;
             --espn-red: #cc0000;
             --sub-bg: #f8f9fa;
+            /* Momentum/Flow Colors */
+            --away-flow: #0056b3;
+            --home-flow: #e01931;
         }
 
         body {
@@ -88,7 +91,7 @@
         .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; }
 
         /* --- 3D INTERFACE --- */
-        .game-container { perspective: 1200px; height: 620px; margin-bottom: 20px; }
+        .game-container { perspective: 1200px; height: 850px; margin-bottom: 20px; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back {
@@ -126,9 +129,9 @@
         /* --- ENHANCED PLAY-BY-PLAY STYLE --- */
         .live-pbp-container {
             background: #f8f9fa;
-            padding: 12px 15px;
+            padding: 10px 15px;
             border-top: 1px solid var(--border);
-            min-height: 110px;
+            min-height: 80px;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
@@ -139,19 +142,38 @@
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             display: block;
         }
         .pbp-text-content {
             color: #333;
             font-size: 0.75rem;
-            line-height: 1.4;
+            line-height: 1.3;
             white-space: pre-line;
             overflow-y: auto;
-            max-height: 90px;
+            max-height: 60px;
             display: block;
             font-weight: 500;
         }
+
+        /* --- HIGH DEFINITION SCORING MOMENTUM --- */
+        .flow-container { background: #fff; padding: 12px 15px; border-top: 1px solid #eee; }
+        .flow-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .flow-label { font-size: 0.65rem; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
+        .flow-legend { display: flex; gap: 15px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.6rem; font-weight: 800; }
+        .dot-away { width: 10px; height: 10px; border-radius: 2px; background: var(--away-flow); }
+        .dot-home { width: 10px; height: 10px; border-radius: 2px; background: var(--home-flow); }
+
+        .flow-svg {
+            width: 100%; height: 120px; overflow: visible;
+            background: #fcfcfc; border-radius: 4px;
+            border-left: 1px solid #ddd; border-bottom: 1px solid #ddd;
+        }
+        .grid-line { stroke: #e0e0e0; stroke-width: 0.8; }
+        .axis-text { fill: #444; font-size: 6px; font-weight: 900; }
+        .path-away-flow { stroke: var(--away-flow); stroke-width: 3.5; fill: none; transition: d 0.4s ease; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
+        .path-home-flow { stroke: var(--home-flow); stroke-width: 3.5; fill: none; transition: d 0.4s ease; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
 
         /* --- SIDEBARS & FAB --- */
         .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 2000; overflow-y: auto; box-shadow: 10px 0 30px rgba(0,0,0,0.15); }
@@ -170,7 +192,6 @@
 
         .filter-bar { padding: 15px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
         .btn-filter { border-radius: 20px; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; text-transform: uppercase; transition: 0.2s; }
-        .disabled { pointer-events: none; opacity: 0.5; filter: grayscale(1); }
         .logout-link { font-size: 0.65rem; color: #dc3545 !important; text-decoration: none; font-weight: 800; margin-left: 10px; }
 
         .share-btn {
@@ -267,34 +288,49 @@
 
                                             <div class="d-flex justify-content-around align-items-center">
                                                 <div class="text-center px-1" style="width: 35%;">
-                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1" crossorigin="anonymous" alt="{{ g.Matchup.split(' @ ')[0] }}">
+                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
                                                     <span class="team-name-label">{{ g.Matchup.split(' @ ')[0] }}</span>
                                                     <div class="sos-badge">SOS: #{{ g.stats.sa | int }}</div>
                                                     <span class="proj-val">{{ g.Left_Proj }}</span>
-                                                    {% if g.stats.l3pa > g.stats.pa %}
-                                                        <small class="text-success fw-bold" style="font-size: 0.55rem;">↑ TRENDING</small>
-                                                    {% endif %}
                                                 </div>
                                                 <div class="px-1">
                                                     <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
                                                     <small class="text-muted fw-bold" style="font-size: 0.5rem;">LIVE SCORE</small>
                                                 </div>
                                                 <div class="text-center px-1" style="width: 35%;">
-                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1" crossorigin="anonymous" alt="{{ g.Matchup.split(' @ ')[1] }}">
+                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
                                                     <span class="team-name-label">{{ g.Matchup.split(' @ ')[1] }}</span>
                                                     <div class="sos-badge">SOS: #{{ g.stats.sh | int }}</div>
                                                     <span class="proj-val">{{ g.Right_Proj }}</span>
-                                                    {% if g.stats.l3ph > g.stats.ph %}
-                                                        <small class="text-success fw-bold" style="font-size: 0.55rem;">↑ TRENDING</small>
-                                                    {% endif %}
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <div class="flow-container" id="flow-wrap-{{ g.ESPN_ID }}">
+                                            <div class="flow-header">
+                                                <span class="flow-label">Scoring Momentum</span>
+                                                <div class="flow-legend">
+                                                    <div class="legend-item"><div class="dot-away"></div><span>{{ g.Matchup.split(' @ ')[0] }}</span></div>
+                                                    <div class="legend-item"><div class="dot-home"></div><span>{{ g.Matchup.split(' @ ')[1] }}</span></div>
+                                                </div>
+                                            </div>
+                                            <svg class="flow-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <line x1="0" y1="25" x2="100" y2="25" class="grid-line" />
+                                                <line x1="0" y1="50" x2="100" y2="50" class="grid-line" />
+                                                <line x1="0" y1="75" x2="100" y2="75" class="grid-line" />
+
+                                                <path id="flow-away-{{ g.ESPN_ID }}" class="path-away-flow" d="M 0 100" />
+                                                <path id="flow-home-{{ g.ESPN_ID }}" class="path-home-flow" d="M 0 100" />
+
+                                                <text x="-2" y="100" class="axis-text" style="text-anchor: end;">0</text>
+                                                <text x="-2" y="8" id="max-y-{{ g.ESPN_ID }}" class="axis-text" style="text-anchor: end;">100</text>
+                                            </svg>
                                         </div>
 
                                         <div class="live-pbp-container" id="pbp-container-{{ g.ESPN_ID }}" style="display: {{ 'flex' if g.is_live else 'none' }};">
                                             <span class="pbp-label-mini">Recent Play-by-Play</span>
                                             <div id="pbp-text-{{ g.ESPN_ID }}" class="pbp-text-content">
-                                                {{ g.last_play or "Tracking game momentum..." }}
+                                                {{ g.last_play or "Tracking game flow..." }}
                                             </div>
                                         </div>
 
@@ -314,18 +350,14 @@
                                         <div class="back-header text-center">Power Rankings & SOS</div>
                                         <div class="stats-grid">
                                             <div class="stat-column">
-                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent); font-size: 0.6rem;">{{ g.Matchup.split(' @ ')[0] }}</div>
+                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent);">{{ g.Matchup.split(' @ ')[0] }}</div>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">DEF</span><span class="stat-value">{{ g.stats.pga }}</span></div>
                                             </div>
                                             <div class="stat-column">
-                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent); font-size: 0.6rem;">{{ g.Matchup.split(' @ ')[1] }}</div>
+                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent);">{{ g.Matchup.split(' @ ')[1] }}</div>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
-                                                <div class="stat-row"><span class="stat-label">DEF</span><span class="stat-value">{{ g.stats.pgh }}</span></div>
                                             </div>
                                         </div>
                                         <div class="p-3 border-top">
@@ -343,7 +375,6 @@
                 <section class="stat-card-mini bg-primary text-white p-3 shadow-sm">
                     <small class="opacity-75 fw-bold">L50 WIN RATE</small>
                     <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
-                    <div class="small mt-1">{{ stats.W }} Correct — {{ stats.L }} Losses</div>
                 </section>
                 <section class="card shadow-sm mt-3">
                     <div class="card-header bg-white fw-bold small">LAST 10 OUTCOMES</div>
@@ -352,7 +383,6 @@
                         <div class="small border-bottom py-2">
                             <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}">{{ r.Result }}</span>
                             <b class="ms-1">{{ r.Pick }}</b>
-                            <div class="text-muted mt-1" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -371,54 +401,13 @@
 
     <script>
         const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
-        let parlayLocked = false;
-
-        async function shareCard(gameId, matchup, event) {
-            event.stopPropagation();
-            const cardFront = document.querySelector(`#game-card-${gameId} .card-front`);
-            const shareBtn = cardFront.querySelector('.share-btn');
-            const pickContent = cardFront.querySelector('.pick-content');
-            const projVals = cardFront.querySelectorAll('.proj-val');
-            shareBtn.style.visibility = 'hidden';
-            pickContent.style.filter = 'blur(10px)';
-            projVals.forEach(v => v.style.filter = 'blur(10px)');
-            try {
-                const canvas = await html2canvas(cardFront, { useCORS: true, backgroundColor: '#f0f2f5', scale: 2 });
-                shareBtn.style.visibility = 'visible';
-                pickContent.style.filter = 'none';
-                projVals.forEach(v => v.style.filter = 'none');
-                canvas.toBlob(async (blob) => {
-                    const file = new File([blob], `edge-engine-${gameId}.png`, { type: 'image/png' });
-                    const shareData = { title: 'Edge Engine Pro', text: `Matchup: ${matchup}\n\nCheck live scores at Betify Sports!`, files: [file], url: 'https://betifysports.com' };
-                    if (navigator.share && navigator.canShare(shareData)) { await navigator.share(shareData); } else {
-                        const link = document.createElement('a'); link.download = `Betify-${gameId}.png`; link.href = canvas.toDataURL(); link.click();
-                        alert("Image generated!");
-                    }
-                });
-            } catch (err) {
-                console.error("Sharing failed", err);
-                shareBtn.style.visibility = 'visible'; pickContent.style.filter = 'none'; projVals.forEach(v => v.style.filter = 'none');
-            }
-        }
 
         function toggleS(id) {
             const s = document.getElementById(id); if(!s) return;
             const w = window.innerWidth < 600 ? '100%' : '350px';
-            const otherId = id === 'stats-sidebar' ? 'parlay-sidebar' : 'stats-sidebar';
-            const other = document.getElementById(otherId);
-            if(other) other.style.width = '0';
+            const other = id === 'stats-sidebar' ? 'parlay-sidebar' : 'stats-sidebar';
+            document.getElementById(other).style.width = '0';
             s.style.width = s.style.width === w ? '0' : w;
-        }
-
-        function generateRandomParlay() {
-            if (!IS_PREMIUM || parlayLocked) return;
-            const sizeSel = document.getElementById('parlay-size-select'); if (!sizeSel) return;
-            const size = parseInt(sizeSel.value);
-            const legs = Array.from(document.querySelectorAll('.parlay-leg'));
-            const available = legs.filter(l => l.dataset.started === 'false');
-            legs.forEach(l => l.style.display = 'none');
-            const count = Math.min(available.length, size);
-            available.sort(() => 0.5 - Math.random()).slice(0, count).forEach(l => l.style.display = 'block');
         }
 
         async function updateEngine() {
@@ -429,50 +418,55 @@
                     const game = dataMap[id];
                     const scoreStr = `${game.s_away}-${game.s_home}`;
 
-                    const sEl = document.getElementById(`score-${id}`);
-                    if (sEl && sEl.textContent !== scoreStr) {
-                        sEl.textContent = scoreStr;
-                        const card = sEl.closest('.card-front');
-                        if(card) { card.classList.add('score-update-flash'); setTimeout(() => card.classList.remove('score-update-flash'), 2000); }
+                    if(document.getElementById(`score-${id}`)) document.getElementById(`score-${id}`).textContent = scoreStr;
+                    if(document.getElementById(`tick-${id}`)) document.getElementById(`tick-${id}`).textContent = scoreStr;
+                    if(document.getElementById(`status-${id}`)) document.getElementById(`status-${id}`).innerText = game.status;
+                    if(document.getElementById(`pbp-text-${id}`)) document.getElementById(`pbp-text-${id}`).textContent = game.last_play;
+
+                    // --- HD POINT GROWTH LOGIC ---
+                    const drawPath = (pathId, points, maxPoints) => {
+                        const path = document.getElementById(pathId);
+                        if (!path || !points || points.length === 0) return;
+
+                        const scaleY = maxPoints > 0 ? maxPoints : 80;
+
+                        const d = points.map((val, i) => {
+                            const x = (i / (points.length - 1)) * 100;
+                            // Clamp values to ensure they stay in view
+                            const y = Math.max(2, 100 - ((val / scaleY) * 98));
+                            return `${x.toFixed(2)},${y.toFixed(2)}`;
+                        }).join(' L ');
+
+                        path.setAttribute('d', `M ${d}`);
+                    };
+
+                    const homeMax = Math.max(...game.momentum_home);
+                    const awayMax = Math.max(...game.momentum_away);
+                    const gameMax = Math.max(homeMax, awayMax, 20);
+
+                    if(document.getElementById(`max-y-${id}`)) {
+                        document.getElementById(`max-y-${id}`).textContent = gameMax;
                     }
 
-                    const pbpEl = document.getElementById(`pbp-text-${id}`);
-                    const pbpCont = document.getElementById(`pbp-container-${id}`);
-                    if (pbpEl && game.last_play) {
-                        pbpEl.textContent = game.last_play;
-                        if(pbpCont) pbpCont.style.display = 'flex';
-                    } else if (pbpCont && (game.state === 'pre' || game.state === 'post')) {
-                        pbpCont.style.display = 'none';
-                    }
-
-                    const tickEl = document.getElementById(`tick-${id}`);
-                    if (tickEl) tickEl.textContent = scoreStr;
-
-                    const statusEl = document.getElementById(`status-${id}`);
-                    if (statusEl) statusEl.innerText = game.status;
-
-                    const hasStarted = (game.state === 'in' || game.status.includes('FINAL') || game.status.includes('HALFTIME'));
-                    const lockBadge = document.getElementById(`lock-${id}`);
-                    if (hasStarted) {
-                        if (lockBadge) lockBadge.style.display = "block";
-                        const pLeg = document.getElementById(`parlay-leg-${id}`);
-                        if (pLeg && pLeg.style.display === 'block') {
-                            pLeg.dataset.started = "true";
-                            parlayLocked = true;
-                            const btn = document.getElementById('parlay-refresh-btn');
-                            if (btn) btn.classList.add('disabled');
-                        }
-                    }
+                    drawPath(`flow-away-${id}`, game.momentum_away, gameMax);
+                    drawPath(`flow-home-${id}`, game.momentum_home, gameMax);
                 }
-                document.getElementById('sync-timer').innerHTML = `<span class="text-success">●</span> SYNCED ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                document.getElementById('sync-timer').innerHTML = `<span class="text-success">●</span> SYNCED ${new Date().toLocaleTimeString()}`;
             } catch (err) { console.error("Sync Error:", err); }
         }
 
+        async function shareCard(gameId, matchup, event) {
+            event.stopPropagation();
+            const cardFront = document.querySelector(`#game-card-${gameId} .card-front`);
+            const canvas = await html2canvas(cardFront, { useCORS: true, backgroundColor: '#f0f2f5', scale: 2 });
+            const link = document.createElement('a');
+            link.download = `Edge-${gameId}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
         setInterval(updateEngine, 30000);
-        window.onload = () => {
-            updateEngine();
-            if (IS_PREMIUM) generateRandomParlay();
-        };
+        window.onload = updateEngine;
     </script>
 </body>
 </html>

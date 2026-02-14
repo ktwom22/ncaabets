@@ -128,25 +128,40 @@ def get_live_data():
                 "h_team": t_home['team']['displayName'],
                 "a_logo": t_away['team'].get('logo', ''),
                 "h_logo": t_home['team'].get('logo', ''),
+                "momentum_home": [0],
+                "momentum_away": [0],
                 "last_play": ""
             }
 
-            # Fetch LAST 3 Play-by-Plays with Timestamps
-            if status_state == 'in':
+            if status_state in ['in', 'post']:
                 try:
                     summary = requests.get(
                         f"http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={eid}",
-                        timeout=2).json()
+                        timeout=3).json()
+
+                    # CUMULATIVE POINT GROWTH LOGIC
+                    # This ensures the lines start at (0,0) and move Up and To the Right
                     plays = summary.get('plays', [])
                     if plays:
-                        # Format: "Clock - Play Text"
+                        m_home, m_away = [0], [0]
+                        # We iterate through all plays to build the full "Up and Right" trend
+                        for p in plays:
+                            if 'homeScore' in p and 'awayScore' in p:
+                                h_score = int(p['homeScore'])
+                                a_score = int(p['awayScore'])
+                                # Only append if the score actually changed to keep the line moving
+                                if h_score != m_home[-1] or a_score != m_away[-1]:
+                                    m_home.append(h_score)
+                                    m_away.append(a_score)
+
+                        data["momentum_home"] = m_home
+                        data["momentum_away"] = m_away
+
+                        # Last 3 Plays
                         formatted_plays = []
                         for p in plays[-3:]:
                             clock = p.get('clock', {}).get('displayValue', '--:--')
-                            text_play = p.get('text', '')
-                            formatted_plays.append(f"{clock} - {text_play}")
-
-                        # Reverse to put newest at the top
+                            formatted_plays.append(f"{clock} - {p.get('text', '')}")
                         formatted_plays.reverse()
                         data["last_play"] = "\n".join(formatted_plays)
                     else:
@@ -262,14 +277,16 @@ def index():
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {
             "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
-            "a_team": a_name, "h_team": h_name, "last_play": ""
+            "a_team": a_name, "h_team": h_name, "last_play": "", "momentum_home": [0], "momentum_away": [0]
         }))
         eid = clean_id(ld.get('id', '0'))
         status_label = str(ld.get('status', '')).upper()
+
         is_locked = any(x in status_label for x in ["PENDING", "FINAL", "1ST", "2ND", "HALF"]) or ld.get('state') in [
             'in', 'post']
 
-        if is_locked and eid in archive_data_map:
+        if (is_locked or eid in archive_data_map) and eid in archive_data_map:
+            # USER CONSTRAINT: STATIONARY PICK FROM ARCHIVE
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
             proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
@@ -316,7 +333,9 @@ def index():
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
             'Edge': abs_edge, 'status': ld['status'], 'is_live': ld.get('state') == 'in',
             'Action': action_val, 'stats': stats, 'is_public': (stats['ra'] > 100),
-            'last_play': ld.get('last_play', '')
+            'last_play': ld.get('last_play', ''),
+            'momentum_home': ld.get('momentum_home', [0]),
+            'momentum_away': ld.get('momentum_away', [0])
         }
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
@@ -451,10 +470,8 @@ with app.app_context():
         db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);'))
         db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS stripe_id VARCHAR(100);'))
         db.session.commit()
-        print("Database columns verified/added successfully.")
     except Exception as e:
         db.session.rollback()
-        print(f"Migration check error: {e}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
