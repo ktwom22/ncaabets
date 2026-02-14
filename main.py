@@ -13,7 +13,7 @@ from flask import Flask, render_template, jsonify, redirect, url_for, request, f
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import select
+from sqlalchemy import select, text
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_caching import Cache
@@ -120,9 +120,7 @@ def get_live_data():
                 "a_team": t_away['team']['displayName'],
                 "h_team": t_home['team']['displayName'],
                 "a_logo": t_away['team'].get('logo', ''),
-                "h_logo": t_home['team'].get('logo', ''),
-                "plays": [{"clock": "LIVE", "text": p.strip()} for p in
-                          comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
+                "h_logo": t_home['team'].get('logo', '')
             }
             norm_away, norm_home = normalize(data['a_team']), normalize(data['h_team'])
             live_map[norm_away] = live_map[norm_home] = live_map[data['id']] = data
@@ -140,13 +138,8 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
             row_idx = col_p_values.index(eid) + 1
             if is_finished:
                 score_a, score_h = ld['s_away'], ld['s_home']
-                pick_team = normalize(game_data['Raw_Pick'])
-                spread = float(game_data['Raw_Spread'])
-                is_away = normalize(ld['a_team']) == pick_team
-                p_score, o_score = (score_a, score_h) if is_away else (score_h, score_a)
-                net = p_score + spread - o_score
-                res = "WIN" if net > 0 else "LOSS" if net < 0 else "PUSH"
-                archive_sheet.update(f"C{row_idx}:D{row_idx}", [[res, f"{score_a}-{score_h}"]])
+                archive_sheet.update(f"C{row_idx}:D{row_idx}", [
+                    ["WIN" if "WIN" in str(game_data.get('Rec')) else "LOSS", f"{score_a}-{score_h}"]])
         elif ld.get('state') in ['in', 'post']:
             new_row = [
                 datetime.now(pytz.timezone('US/Eastern')).strftime("%m/%d/%Y"),
@@ -195,7 +188,6 @@ def index():
 
     archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # --- WIN RATE % CALCULATION FIX ---
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         if ares.status_code == 200:
@@ -205,15 +197,11 @@ def index():
                 for _, row in adf.iterrows():
                     eid_key = clean_id(row.get('ESPN_ID', '0'))
                     if eid_key != "0": archive_data_map[eid_key] = row
-
-                # Clean and filter column for results
                 res_col = adf['Result'].astype(str).str.strip().str.upper()
                 wins = len(adf[res_col == 'WIN'])
                 losses = len(adf[res_col == 'LOSS'])
-
                 if (wins + losses) > 0:
                     pct = round((wins / (wins + losses)) * 100, 1)
-
                 last_10 = adf[res_col.isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
     except Exception as e:
         print(f"Archive Error: {e}")
@@ -242,15 +230,13 @@ def index():
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {
             "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
-            "a_team": a_name, "h_team": h_name, "plays": []
+            "a_team": a_name, "h_team": h_name
         }))
         eid = clean_id(ld.get('id', '0'))
         status_label = str(ld.get('status', '')).upper()
-
         is_locked = any(x in status_label for x in ["PENDING", "FINAL", "1ST", "2ND", "HALF"]) or ld.get('state') in [
             'in', 'post']
 
-        # STATIONARY PICK LOGIC
         if is_locked and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
@@ -276,7 +262,6 @@ def index():
             fd_spread = clean_val(row.get('FD Spread'), default=None)
             proj_l = round(((stats['pa'] * (1 + (175 - stats['sa']) / 1000)) + stats['pgh']) / 2, 1)
             proj_r = round(((stats['ph'] * (1 + (175 - stats['sh']) / 1000)) + stats['pga']) / 2 + 3.2, 1)
-
             if fd_spread is None:
                 pick, p_spr_val, abs_edge = "TBD", 0.0, 0.0
             else:
@@ -285,60 +270,30 @@ def index():
                 abs_edge = round(abs(edge), 1)
 
         if team_filter == 'top25' and not (stats['ra'] <= 25 or stats['rh'] <= 25): continue
-        if team_filter == 'top100' and not (stats['ra'] <= 100 or stats['rh'] <= 100): continue
+        can_view = is_premium or (stats['ra'] > 100)
 
-        is_public_game = (stats['ra'] > 100)
-        can_view = is_premium or is_public_game
-
-        if abs_edge >= 8.0:
-            action_val, rec_val = "PLAY", "🔥 AUTO-PLAY"
-        elif abs_edge >= 5.0:
-            action_val, rec_val = "PLAY", "✅ STRONG"
-        elif abs_edge >= 3.0:
-            action_val, rec_val = "PLAY", "⚠️ LOW"
-        else:
-            action_val, rec_val = "FADE", "❌ NO PLAY"
-
+        action_val = "PLAY" if abs_edge >= 3.0 else "FADE"
         game_obj = {
-            'Matchup': f"{a_name} @ {h_name}",
-            'ESPN_ID': eid,
+            'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
-            'Raw_Pick': pick,
-            'Raw_Spread': p_spr_val,
+            'Raw_Pick': pick, 'Raw_Spread': p_spr_val,
             'Pick': pick.upper() if can_view else "LOCKED",
             'Pick_Spread': f"{p_spr_val:+g}" if (can_view and pick != "TBD") else "???",
-            'can_view': can_view,
-            'Left_Proj': proj_l,
-            'Right_Proj': proj_r,
+            'Left_Proj': proj_l, 'Right_Proj': proj_r,
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
-            'Edge': abs_edge,
-            'status': ld['status'],
-            'is_live': ld.get('state') == 'in',
-            'last_plays': ld.get('plays', []),
-            'Action': action_val,
-            'Rec': rec_val,
-            'stats': stats,
-            'is_public': is_public_game
+            'Edge': abs_edge, 'status': ld['status'], 'is_live': ld.get('state') == 'in',
+            'Action': action_val, 'stats': stats, 'is_public': (stats['ra'] > 100)
         }
-
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
-
         all_games.append(game_obj)
 
-    top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
+    top_plays = sorted([g for g in all_games if g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
                        key=lambda x: x['Edge'], reverse=True)
-
     seo = get_seo_metadata(top_plays[0] if top_plays else None)
-
-    return render_template('index.html',
-                           games=all_games,
-                           top_plays=top_plays,
-                           stats={"W": wins, "L": losses, "PCT": pct},
-                           last_10=last_10,
-                           is_premium=is_premium,
-                           seo=seo)
+    return render_template('index.html', games=all_games, top_plays=top_plays,
+                           stats={"W": wins, "L": losses, "PCT": pct}, last_10=last_10, is_premium=is_premium, seo=seo)
 
 
 # --- USER & AUTH ---
@@ -400,13 +355,12 @@ def forgot_password():
             try:
                 resend.Emails.send({
                     "from": "Edge Engine Pro <auth@edgeenginepro.com>",
-                    "to": email,
-                    "subject": "Reset Your Password",
+                    "to": email, "subject": "Reset Your Password",
                     "html": f"<p>Click <a href='{reset_url}'>here</a> to reset your password.</p>"
                 })
             except Exception as e:
                 print(f"Email Error: {e}")
-        flash("If that email is registered, a reset link has been sent.", "info")
+        flash("If registered, a reset link has been sent.", "info")
         return redirect(url_for('login'))
     return render_template('forgot_password.html')
 
@@ -415,14 +369,13 @@ def forgot_password():
 def reset_password(token):
     user = db.session.execute(select(User).filter_by(reset_token=token)).scalar_one_or_none()
     if not user:
-        flash("Invalid or expired token.", "danger")
+        flash("Invalid token.", "danger")
         return redirect(url_for('login'))
     if request.method == 'POST':
-        new_pw = request.form.get('password')
-        user.password = generate_password_hash(new_pw, method='pbkdf2:sha256')
+        user.password = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
         user.reset_token = None
         db.session.commit()
-        flash("Password updated! Please log in.", "success")
+        flash("Password updated!", "success")
         return redirect(url_for('login'))
     return render_template('reset_password.html', token=token)
 
@@ -461,5 +414,13 @@ def sitemap():
 
 if __name__ == '__main__':
     with app.app_context():
+        # --- RAILWAY DB HOTFIX ---
         db.create_all()
+        try:
+            db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);'))
+            db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS stripe_id VARCHAR(100);'))
+            db.session.commit()
+        except Exception as e:
+            print(f"Migration check: {e}")
+
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
