@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live College Basketball Scores & Play-by-Play | Edge Engine Pro</title>
+    <meta name="description" content="Real-time NCAA basketball live scores, AI-powered play-by-play updates, and professional betting edges for the 2026 season.">
+    <meta name="keywords" content="live basketball scores, NCAA play by play, college basketball betting picks, live sports ticker, basketball analytics">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "LiveBlogPosting",
+      "headline": "Live College Basketball Scoreboard & Play-by-Play Updates",
+      "description": "Real-time updates and AI-driven betting insights for today's NCAA matchups.",
+      "coverageStartTime": "2026-02-14T12:00:00Z",
+      "author": {
+        "@type": "Organization",
+        "name": "Edge Engine Pro"
+      }
+    }
+    </script>
+
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-VGV5RCKBP4"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -8,10 +28,6 @@
       gtag('js', new Date());
       gtag('config', 'G-VGV5RCKBP4');
     </script>
-
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edge Engine Pro | 2026 Season</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -72,7 +88,7 @@
         .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; }
 
         /* --- 3D INTERFACE --- */
-        .game-container { perspective: 1200px; height: 580px; margin-bottom: 20px; }
+        .game-container { perspective: 1200px; height: 620px; margin-bottom: 20px; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back {
@@ -107,32 +123,34 @@
         .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); }
         .team-name-label { font-size: 0.65rem; font-weight: 800; color: #555; text-transform: uppercase; margin-top: 4px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        /* --- STACKED PLAY-BY-PLAY STYLE --- */
+        /* --- ENHANCED PLAY-BY-PLAY STYLE --- */
         .live-pbp-container {
             background: #f8f9fa;
-            padding: 10px 15px;
+            padding: 12px 15px;
             border-top: 1px solid var(--border);
-            min-height: 85px;
+            min-height: 110px;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
         }
         .pbp-label-mini {
             color: var(--accent);
-            font-size: 0.55rem;
+            font-size: 0.65rem;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
             display: block;
         }
         .pbp-text-content {
-            color: #444;
-            font-size: 0.6rem;
-            line-height: 1.25;
-            white-space: pre-line; /* CRITICAL FOR \n STACKING */
-            overflow: hidden;
+            color: #333;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            white-space: pre-line;
+            overflow-y: auto;
+            max-height: 90px;
             display: block;
+            font-weight: 500;
         }
 
         /* --- SIDEBARS & FAB --- */
@@ -165,14 +183,16 @@
 </head>
 <body>
 
+    <h1 style="display:none;">Live NCAA Basketball Scores and Professional Play-by-Play Updates</h1>
+
     <div class="ticker-wrap">
         <div class="ticker">
             <div class="ticker-item"><span class="espn-tag">LIVE DATA ENGINE</span></div>
             {% for g in games %}
                 <div class="ticker-item">
-                    <img src="{{ g.Left_Logo }}" class="tick-logo">
+                    <img src="{{ g.Left_Logo }}" class="tick-logo" alt="{{ g.Matchup }} logo">
                     <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
-                    <img src="{{ g.Right_Logo }}" class="tick-logo">
+                    <img src="{{ g.Right_Logo }}" class="tick-logo" alt="{{ g.Matchup }} logo">
                 </div>
             {% endfor %}
         </div>
@@ -208,7 +228,7 @@
                         {% set can_see = is_premium or is_public %}
 
                         <div class="col" id="game-card-{{ g.ESPN_ID }}">
-                            <div class="game-container paywall-container">
+                            <article class="game-container paywall-container">
                                 {% if not can_see %}
                                 <div class="paywall-overlay">
                                     <div class="h3">🔒</div>
@@ -247,7 +267,7 @@
 
                                             <div class="d-flex justify-content-around align-items-center">
                                                 <div class="text-center px-1" style="width: 35%;">
-                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
+                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1" crossorigin="anonymous" alt="{{ g.Matchup.split(' @ ')[0] }}">
                                                     <span class="team-name-label">{{ g.Matchup.split(' @ ')[0] }}</span>
                                                     <div class="sos-badge">SOS: #{{ g.stats.sa | int }}</div>
                                                     <span class="proj-val">{{ g.Left_Proj }}</span>
@@ -257,10 +277,10 @@
                                                 </div>
                                                 <div class="px-1">
                                                     <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
-                                                    <small class="text-muted fw-bold" style="font-size: 0.5rem;">SCORE</small>
+                                                    <small class="text-muted fw-bold" style="font-size: 0.5rem;">LIVE SCORE</small>
                                                 </div>
                                                 <div class="text-center px-1" style="width: 35%;">
-                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
+                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1" crossorigin="anonymous" alt="{{ g.Matchup.split(' @ ')[1] }}">
                                                     <span class="team-name-label">{{ g.Matchup.split(' @ ')[1] }}</span>
                                                     <div class="sos-badge">SOS: #{{ g.stats.sh | int }}</div>
                                                     <span class="proj-val">{{ g.Right_Proj }}</span>
@@ -272,7 +292,7 @@
                                         </div>
 
                                         <div class="live-pbp-container" id="pbp-container-{{ g.ESPN_ID }}" style="display: {{ 'flex' if g.is_live else 'none' }};">
-                                            <span class="pbp-label-mini">Recent Action</span>
+                                            <span class="pbp-label-mini">Recent Play-by-Play</span>
                                             <div id="pbp-text-{{ g.ESPN_ID }}" class="pbp-text-content">
                                                 {{ g.last_play or "Tracking game momentum..." }}
                                             </div>
@@ -313,19 +333,19 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            </article>
                         </div>
                     {% endfor %}
                 </div>
             </div>
 
             <div class="col-lg-3 d-none d-lg-block">
-                <div class="stat-card-mini bg-primary text-white p-3 shadow-sm">
+                <section class="stat-card-mini bg-primary text-white p-3 shadow-sm">
                     <small class="opacity-75 fw-bold">L50 WIN RATE</small>
                     <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
                     <div class="small mt-1">{{ stats.W }} Correct — {{ stats.L }} Losses</div>
-                </div>
-                <div class="card shadow-sm mt-3">
+                </section>
+                <section class="card shadow-sm mt-3">
                     <div class="card-header bg-white fw-bold small">LAST 10 OUTCOMES</div>
                     <div class="card-body p-2">
                         {% for r in last_10 %}
@@ -336,76 +356,13 @@
                         </div>
                         {% endfor %}
                     </div>
-                </div>
+                </section>
             </div>
         </div>
     </div>
 
-    <div id="stats-sidebar" class="slider">
-        <div class="p-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h5 class="fw-bold mb-0">ANALYTICS</h5>
-                <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
-            </div>
-            <div class="stat-card-mini bg-primary text-white p-3 mb-4 shadow-sm">
-                <small class="opacity-75 d-block fw-bold">L50 WIN RATE</small>
-                <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
-                <div class="small mt-1">{{ stats.W }} Wins — {{ stats.L }} Losses</div>
-            </div>
-            <h6 class="fw-bold small text-muted mb-3">LAST 10 TRENDS</h6>
-            <div class="list-group list-group-flush">
-                {% for r in last_10 %}
-                <div class="list-group-item bg-transparent px-0 py-3 border-bottom">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}">{{ r.Result }}</span>
-                        <small class="text-muted">{{ r.Date if r.Date else '' }}</small>
-                    </div>
-                    <div class="fw-bold">{{ r.Pick }} {{ r.Pick_Spread }}</div>
-                    <div class="text-muted" style="font-size: 0.75rem;">{{ r.Matchup }}</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <div id="parlay-sidebar" class="slider">
-        <div class="p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="fw-bold mb-0">AI PARLAY BUILDER</h5>
-                <button class="btn-close" onclick="toggleS('parlay-sidebar')"></button>
-            </div>
-            {% if is_premium %}
-                <div class="mb-4">
-                    <label class="small fw-bold text-muted mb-1">PARLAY SIZE</label>
-                    <select id="parlay-size-select" class="form-select form-select-sm" onchange="generateRandomParlay()">
-                        <option value="2">2-Leg</option>
-                        <option value="3" selected>3-Leg</option>
-                        <option value="4">4-Leg</option>
-                        <option value="5">5-Leg</option>
-                    </select>
-                </div>
-                <div id="parlay-content">
-                    {% for p in top_plays[:10] %}
-                    <div class="stat-card-mini border-start border-4 border-primary parlay-leg" id="parlay-leg-{{ p.ESPN_ID }}" data-started="{{ 'true' if p.is_live or p.status == 'FINAL' or 'HALFTIME' in p.status else 'false' }}" style="display: none;">
-                        <div class="small fw-bold">{{ p.Matchup }}</div>
-                        <div class="fw-bold text-primary">
-                            <span id="parlay-pick-{{ p.ESPN_ID }}">{{ p.Pick }}</span>
-                            <span id="parlay-spread-{{ p.ESPN_ID }}">{{ p.Pick_Spread }}</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                    <button id="parlay-refresh-btn" class="btn btn-dark w-100 mt-3" onclick="generateRandomParlay()">GENERATE NEW</button>
-                </div>
-            {% else %}
-                <div class="text-center py-5">
-                    <div class="h1 mb-3">🔒</div>
-                    <h5 class="fw-bold">PRO FEATURE</h5>
-                    <p class="text-muted small px-3">Upgrade to Edge Engine Pro to use the AI Parlay Builder.</p>
-                    <a href="/login" class="unlock-btn d-inline-block mt-3">UPGRADE TO PRO</a>
-                </div>
-            {% endif %}
-        </div>
-    </div>
+    <div id="stats-sidebar" class="slider">...</div>
+    <div id="parlay-sidebar" class="slider">...</div>
 
     <div class="fab-container">
         <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
@@ -432,10 +389,10 @@
                 projVals.forEach(v => v.style.filter = 'none');
                 canvas.toBlob(async (blob) => {
                     const file = new File([blob], `edge-engine-${gameId}.png`, { type: 'image/png' });
-                    const shareData = { title: 'Edge Engine Pro', text: `Matchup: ${matchup}\n\nGo to Betify Sports to see the full pick!`, files: [file], url: 'https://betifysports.com' };
+                    const shareData = { title: 'Edge Engine Pro', text: `Matchup: ${matchup}\n\nCheck live scores at Betify Sports!`, files: [file], url: 'https://betifysports.com' };
                     if (navigator.share && navigator.canShare(shareData)) { await navigator.share(shareData); } else {
                         const link = document.createElement('a'); link.download = `Betify-${gameId}.png`; link.href = canvas.toDataURL(); link.click();
-                        alert("Image generated! Share this on your social media.");
+                        alert("Image generated!");
                     }
                 });
             } catch (err) {
