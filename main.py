@@ -51,7 +51,7 @@ def load_user(user_id):
         return db.session.get(User, int(user_id))
     except Exception as e:
         db.session.rollback()
-        print(f"User load failed (likely missing column): {e}")
+        print(f"User load failed: {e}")
         return None
 
 
@@ -112,12 +112,14 @@ def get_live_data():
             "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=150",
             headers=headers, timeout=5).json()
         for event in res.get('events', []):
+            eid = str(event['id'])
             comp = event['competitions'][0]
             t_away = next(t for t in comp['competitors'] if t['homeAway'] == 'away')
             t_home = next(t for t in comp['competitors'] if t['homeAway'] == 'home')
             status_state = event['status']['type']['state']
+
             data = {
-                "id": str(event['id']),
+                "id": eid,
                 "status": "FINAL" if status_state == "post" else event['status']['type']['shortDetail'],
                 "state": status_state,
                 "s_away": int(clean_val(t_away.get('score', 0))),
@@ -125,10 +127,35 @@ def get_live_data():
                 "a_team": t_away['team']['displayName'],
                 "h_team": t_home['team']['displayName'],
                 "a_logo": t_away['team'].get('logo', ''),
-                "h_logo": t_home['team'].get('logo', '')
+                "h_logo": t_home['team'].get('logo', ''),
+                "last_play": ""
             }
+
+            # Fetch LAST 3 Play-by-Plays with Timestamps
+            if status_state == 'in':
+                try:
+                    summary = requests.get(
+                        f"http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={eid}",
+                        timeout=2).json()
+                    plays = summary.get('plays', [])
+                    if plays:
+                        # Format: "Clock - Play Text"
+                        formatted_plays = []
+                        for p in plays[-3:]:
+                            clock = p.get('clock', {}).get('displayValue', '--:--')
+                            text_play = p.get('text', '')
+                            formatted_plays.append(f"{clock} - {text_play}")
+
+                        # Reverse to put newest at the top
+                        formatted_plays.reverse()
+                        data["last_play"] = "\n".join(formatted_plays)
+                    else:
+                        data["last_play"] = "Live action in progress..."
+                except:
+                    data["last_play"] = "Live update pending..."
+
             norm_away, norm_home = normalize(data['a_team']), normalize(data['h_team'])
-            live_map[norm_away] = live_map[norm_home] = live_map[data['id']] = data
+            live_map[norm_away] = live_map[norm_home] = live_map[eid] = data
     except Exception as e:
         print(f"Live API Error: {e}")
     return live_map
@@ -235,7 +262,7 @@ def index():
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {
             "id": "0", "status": g_time, "state": "pre", "s_away": 0, "s_home": 0,
-            "a_team": a_name, "h_team": h_name
+            "a_team": a_name, "h_team": h_name, "last_play": ""
         }))
         eid = clean_id(ld.get('id', '0'))
         status_label = str(ld.get('status', '')).upper()
@@ -288,7 +315,8 @@ def index():
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
             'Edge': abs_edge, 'status': ld['status'], 'is_live': ld.get('state') == 'in',
-            'Action': action_val, 'stats': stats, 'is_public': (stats['ra'] > 100)
+            'Action': action_val, 'stats': stats, 'is_public': (stats['ra'] > 100),
+            'last_play': ld.get('last_play', '')
         }
         if eid != "0" and ld.get('state') in ['in', 'post']:
             auto_log_game(game_obj, stats, ld, archive_sheet, col_p_values)
@@ -417,11 +445,9 @@ def sitemap():
     return response
 
 
-# Create the app context and run migrations BEFORE the app starts
 with app.app_context():
     db.create_all()
     try:
-        # Check if reset_token exists, if not, add it
         db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS reset_token VARCHAR(100);'))
         db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS stripe_id VARCHAR(100);'))
         db.session.commit()
