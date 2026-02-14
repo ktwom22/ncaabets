@@ -15,6 +15,7 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         :root {
@@ -71,7 +72,7 @@
         .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; }
 
         /* --- 3D INTERFACE --- */
-        .game-container { perspective: 1200px; height: 520px; margin-bottom: 20px; }
+        .game-container { perspective: 1200px; height: 540px; margin-bottom: 20px; }
         .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
         .is-flipped .card-inner { transform: rotateY(180deg); }
         .card-front, .card-back {
@@ -100,9 +101,10 @@
         .stat-label { color: var(--locked); }
         .stat-value { font-weight: 700; }
 
-        .t-logo { width: 65px; height: 65px; object-fit: contain; padding: 5px; background: #f9f9f9; border-radius: 8px; }
-        .proj-val { font-size: 2rem; font-weight: 900; color: #333; display: block; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.8rem; font-weight: 900; color: var(--accent); }
+        .t-logo { width: 55px; height: 55px; object-fit: contain; padding: 5px; background: #f9f9f9; border-radius: 8px; }
+        .proj-val { font-size: 1.8rem; font-weight: 900; color: #333; display: block; }
+        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); }
+        .team-name-label { font-size: 0.65rem; font-weight: 800; color: #555; text-transform: uppercase; margin-top: 4px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* --- SIDEBARS & FAB --- */
         .slider { height: 100%; width: 0; position: fixed; top: 0; left: 0; background: #fff; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 2000; overflow-y: auto; box-shadow: 10px 0 30px rgba(0,0,0,0.15); }
@@ -122,6 +124,15 @@
         .filter-bar { padding: 15px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
         .btn-filter { border-radius: 20px; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; text-transform: uppercase; transition: 0.2s; }
         .disabled { pointer-events: none; opacity: 0.5; filter: grayscale(1); }
+        .logout-link { font-size: 0.65rem; color: #dc3545 !important; text-decoration: none; font-weight: 800; margin-left: 10px; }
+
+        /* Share Button Style */
+        .share-btn {
+            background: transparent; border: 1px solid var(--border); color: var(--locked);
+            font-size: 0.6rem; font-weight: 800; padding: 2px 8px; border-radius: 4px;
+            transition: 0.2s;
+        }
+        .share-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
     </style>
 </head>
 <body>
@@ -140,8 +151,13 @@
     </div>
 
     <nav class="navbar navbar-light bg-white border-bottom sticky-top shadow-sm" style="top: 45px;">
-        <div class="container d-flex justify-content-between">
-            <span class="fw-bold">EDGE ENGINE <span class="text-primary">PRO</span></span>
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-bold">EDGE ENGINE <span class="text-primary">PRO</span></span>
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('logout') }}" class="logout-link">LOGOUT</a>
+                {% endif %}
+            </div>
             <div id="sync-timer" class="text-muted fw-bold" style="font-size: 0.6rem;">INITIALIZING...</div>
         </div>
     </nav>
@@ -179,31 +195,37 @@
 
                                         <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
                                             <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                            <div id="heartbeat-{{ g.ESPN_ID }}">
-                                                {% if g.is_live %}<small class="text-danger fw-bold" style="font-size: 0.65rem;"><span class="pulse">●</span> LIVE</small>{% endif %}
+
+                                            <div class="d-flex align-items-center gap-2">
+                                                <button class="share-btn" onclick="shareCard('{{ g.ESPN_ID }}', '{{ g.Matchup }}', event)">SHARE</button>
+                                                <div id="heartbeat-{{ g.ESPN_ID }}">
+                                                    {% if g.is_live %}<small class="text-danger fw-bold" style="font-size: 0.65rem;"><span class="pulse">●</span> LIVE</small>{% endif %}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div class="text-center p-4">
-                                            <div class="mb-3">
+                                        <div class="text-center p-3">
+                                            <div class="mb-3 selection-area">
                                                 <small class="text-muted d-block mb-1" style="font-size: 0.55rem; letter-spacing: 1px;">AI SELECTION</small>
-                                                <div class="fw-bold" style="font-size: 1.25rem;">
+                                                <div class="fw-bold pick-content" style="font-size: 1.1rem;">
                                                     <span id="pick-text-{{ g.ESPN_ID }}">{{ g.Pick }}</span>
                                                     <span class="text-warning" id="spread-{{ g.ESPN_ID }}">{{ g.Pick_Spread }}</span>
                                                 </div>
                                             </div>
 
                                             <div class="d-flex justify-content-around align-items-center">
-                                                <div class="text-center">
-                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-2">
+                                                <div class="text-center px-1" style="width: 35%;">
+                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
+                                                    <span class="team-name-label">{{ g.Matchup.split(' @ ')[0] }}</span>
                                                     <span class="proj-val">{{ g.Left_Proj }}</span>
                                                 </div>
-                                                <div class="px-2">
+                                                <div class="px-1">
                                                     <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
                                                     <small class="text-muted fw-bold" style="font-size: 0.5rem;">SCORE</small>
                                                 </div>
-                                                <div class="text-center">
-                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-2">
+                                                <div class="text-center px-1" style="width: 35%;">
+                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1" crossorigin="anonymous">
+                                                    <span class="team-name-label">{{ g.Matchup.split(' @ ')[1] }}</span>
                                                     <span class="proj-val">{{ g.Right_Proj }}</span>
                                                 </div>
                                             </div>
@@ -225,14 +247,14 @@
                                         <div class="back-header text-center">Power Rankings & SOS</div>
                                         <div class="stats-grid">
                                             <div class="stat-column">
-                                                <h4>AWAY</h4>
+                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent); font-size: 0.6rem;">{{ g.Matchup.split(' @ ')[0] }}</div>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.ra }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sa }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.pa }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">DEF</span><span class="stat-value">{{ g.stats.pga }}</span></div>
                                             </div>
                                             <div class="stat-column">
-                                                <h4>HOME</h4>
+                                                <div class="team-name-label mb-2 pb-1 border-bottom" style="color: var(--accent); font-size: 0.6rem;">{{ g.Matchup.split(' @ ')[1] }}</div>
                                                 <div class="stat-row"><span class="stat-label">NET</span><span class="stat-value">#{{ g.stats.rh }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">SOS</span><span class="stat-value">{{ g.stats.sh }}</span></div>
                                                 <div class="stat-row"><span class="stat-label">PPG</span><span class="stat-value">{{ g.stats.ph }}</span></div>
@@ -251,19 +273,19 @@
             </div>
 
             <div class="col-lg-3 d-none d-lg-block">
-                <div class="stat-card-mini bg-primary text-white p-3">
-                    <small class="opacity-75">LAST 50 GAMES</small>
-                    <div class="h2 fw-bold mb-0">{{ stats.last_50_pct }}%</div>
-                    <div class="small mt-1">{{ stats.last_50_w }} Correct — {{ stats.last_50_l }} Losses</div>
+                <div class="stat-card-mini bg-primary text-white p-3 shadow-sm">
+                    <small class="opacity-75 fw-bold">L50 WIN RATE</small>
+                    <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
+                    <div class="small mt-1">{{ stats.W }} Correct — {{ stats.L }} Losses</div>
                 </div>
                 <div class="card shadow-sm mt-3">
-                    <div class="card-header fw-bold small">LAST 10 OUTCOMES</div>
+                    <div class="card-header bg-white fw-bold small">LAST 10 OUTCOMES</div>
                     <div class="card-body p-2">
                         {% for r in last_10 %}
                         <div class="small border-bottom py-2">
-                            <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' }}">{{ r.Result }}</span>
-                            <b>{{ r.Pick }}</b>
-                            <div class="text-muted" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
+                            <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}">{{ r.Result }}</span>
+                            <b class="ms-1">{{ r.Pick }}</b>
+                            <div class="text-muted mt-1" style="font-size: 0.65rem;">{{ r.Matchup }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -279,10 +301,10 @@
                 <button class="btn-close" onclick="toggleS('stats-sidebar')"></button>
             </div>
 
-            <div class="stat-card-mini bg-primary text-white p-3 mb-4">
-                <small class="opacity-75 d-block">L50 WIN RATE</small>
-                <div class="h2 fw-bold mb-0">{{ stats.last_50_pct }}%</div>
-                <div class="small mt-1">{{ stats.last_50_w }} Wins — {{ stats.last_50_l }} Losses</div>
+            <div class="stat-card-mini bg-primary text-white p-3 mb-4 shadow-sm">
+                <small class="opacity-75 d-block fw-bold">L50 WIN RATE</small>
+                <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
+                <div class="small mt-1">{{ stats.W }} Wins — {{ stats.L }} Losses</div>
             </div>
 
             <h6 class="fw-bold small text-muted mb-3">LAST 10 TRENDS</h6>
@@ -313,7 +335,7 @@
             {% if is_premium %}
                 <div class="mb-4">
                     <label class="small fw-bold text-muted mb-1">PARLAY SIZE</label>
-                    <select id="parlay-size-select" class="form-select form-select-sm">
+                    <select id="parlay-size-select" class="form-select form-select-sm" onchange="generateRandomParlay()">
                         <option value="2">2-Leg</option>
                         <option value="3" selected>3-Leg</option>
                         <option value="4">4-Leg</option>
@@ -356,11 +378,72 @@
         const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
         let parlayLocked = false;
 
+        /**
+         * Social Share Functionality
+         * Blurs the pick and projected values temporarily to generate a teaser image
+         */
+        async function shareCard(gameId, matchup, event) {
+            event.stopPropagation(); // Don't flip the card when clicking share
+
+            const cardFront = document.querySelector(`#game-card-${gameId} .card-front`);
+            const shareBtn = cardFront.querySelector('.share-btn');
+            const pickContent = cardFront.querySelector('.pick-content');
+            const projVals = cardFront.querySelectorAll('.proj-val');
+
+            // 1. Prepare UI for Snapshot
+            shareBtn.style.visibility = 'hidden'; // Hide the share button itself in the photo
+            pickContent.style.filter = 'blur(10px)'; // Blur the pick
+            projVals.forEach(v => v.style.filter = 'blur(10px)'); // Blur projections
+
+            try {
+                const canvas = await html2canvas(cardFront, {
+                    useCORS: true,
+                    backgroundColor: '#f0f2f5',
+                    scale: 2 // High resolution
+                });
+
+                // 2. Revert UI immediately
+                shareBtn.style.visibility = 'visible';
+                pickContent.style.filter = 'none';
+                projVals.forEach(v => v.style.filter = 'none');
+
+                // 3. Trigger Native Share
+                canvas.toBlob(async (blob) => {
+                    const file = new File([blob], `edge-engine-${gameId}.png`, { type: 'image/png' });
+                    const shareData = {
+                        title: 'Edge Engine Pro',
+                        text: `Matchup: ${matchup}\n\nGo to Betify Sports to see the full pick!`,
+                        files: [file],
+                        url: 'https://betifysports.com' // Adjust to your real URL
+                    };
+
+                    if (navigator.share && navigator.canShare(shareData)) {
+                        await navigator.share(shareData);
+                    } else {
+                        // Fallback: Download for desktop users
+                        const link = document.createElement('a');
+                        link.download = `Betify-${gameId}.png`;
+                        link.href = canvas.toDataURL();
+                        link.click();
+                        alert("Image generated! Share this on your social media.");
+                    }
+                });
+            } catch (err) {
+                console.error("Sharing failed", err);
+                shareBtn.style.visibility = 'visible';
+                pickContent.style.filter = 'none';
+                projVals.forEach(v => v.style.filter = 'none');
+            }
+        }
+
         function toggleS(id) {
             const s = document.getElementById(id);
+            if(!s) return;
             const w = window.innerWidth < 600 ? '100%' : '350px';
-            const other = id === 'stats-sidebar' ? 'parlay-sidebar' : 'stats-sidebar';
-            document.getElementById(other).style.width = '0';
+            const otherId = id === 'stats-sidebar' ? 'parlay-sidebar' : 'stats-sidebar';
+            const other = document.getElementById(otherId);
+
+            if(other) other.style.width = '0';
             s.style.width = s.style.width === w ? '0' : w;
         }
 
@@ -383,14 +466,23 @@
                 for (const id in dataMap) {
                     const game = dataMap[id];
                     const scoreStr = `${game.s_away}-${game.s_home}`;
+
                     const sEl = document.getElementById(`score-${id}`);
                     if (sEl && sEl.textContent !== scoreStr) {
                         sEl.textContent = scoreStr;
-                        sEl.closest('.card-front').classList.add('score-update-flash');
-                        setTimeout(() => sEl.closest('.card-front').classList.remove('score-update-flash'), 2000);
+                        const card = sEl.closest('.card-front');
+                        if(card) {
+                            card.classList.add('score-update-flash');
+                            setTimeout(() => card.classList.remove('score-update-flash'), 2000);
+                        }
                     }
+
+                    const tickEl = document.getElementById(`tick-${id}`);
+                    if (tickEl) tickEl.textContent = scoreStr;
+
                     const statusEl = document.getElementById(`status-${id}`);
                     if (statusEl) statusEl.innerText = game.status;
+
                     const hasStarted = (game.state === 'in' || game.status.includes('FINAL') || game.status.includes('HALFTIME'));
                     const lockBadge = document.getElementById(`lock-${id}`);
                     if (hasStarted) {

@@ -7,6 +7,7 @@ import json
 import pytz
 import stripe
 import resend
+import secrets
 from flask import Flask, render_template, jsonify, redirect, url_for, request, flash, session, send_from_directory, \
     make_response
 from datetime import datetime
@@ -20,7 +21,7 @@ from flask_caching import Cache
 app = Flask(__name__)
 
 # --- CONFIG & CACHING ---
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'v14-full-stats-2026')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-key-123')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -33,10 +34,6 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MATH CONSTANTS ---
-HCA = 3.25
-RANK_INFLUENCE = 0.05
-
 
 # --- DATABASE MODELS ---
 class User(UserMixin, db.Model):
@@ -45,6 +42,7 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(200), nullable=False)
     is_premium = db.Column(db.Boolean, default=False)
     stripe_id = db.Column(db.String(100))
+    reset_token = db.Column(db.String(100), unique=True, nullable=True)
 
 
 @login_manager.user_loader
@@ -119,8 +117,10 @@ def get_live_data():
                 "state": status_state,
                 "s_away": int(clean_val(t_away.get('score', 0))),
                 "s_home": int(clean_val(t_home.get('score', 0))),
-                "a_team": t_away['team']['displayName'], "h_team": t_home['team']['displayName'],
-                "a_logo": t_away['team'].get('logo', ''), "h_logo": t_home['team'].get('logo', ''),
+                "a_team": t_away['team']['displayName'],
+                "h_team": t_home['team']['displayName'],
+                "a_logo": t_away['team'].get('logo', ''),
+                "h_logo": t_home['team'].get('logo', ''),
                 "plays": [{"clock": "LIVE", "text": p.strip()} for p in
                           comp.get('situation', {}).get('lastPlay', {}).get('text', '').split(';') if p.strip()][:2]
             }
@@ -140,9 +140,11 @@ def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
             row_idx = col_p_values.index(eid) + 1
             if is_finished:
                 score_a, score_h = ld['s_away'], ld['s_home']
-                is_away = normalize(ld['a_team']) == normalize(game_data['Raw_Pick'])
+                pick_team = normalize(game_data['Raw_Pick'])
+                spread = float(game_data['Raw_Spread'])
+                is_away = normalize(ld['a_team']) == pick_team
                 p_score, o_score = (score_a, score_h) if is_away else (score_h, score_a)
-                net = p_score + float(game_data['Raw_Spread']) - o_score
+                net = p_score + spread - o_score
                 res = "WIN" if net > 0 else "LOSS" if net < 0 else "PUSH"
                 archive_sheet.update(f"C{row_idx}:D{row_idx}", [[res, f"{score_a}-{score_h}"]])
         elif ld.get('state') in ['in', 'post']:
@@ -169,7 +171,11 @@ def get_seo_metadata(top_play=None):
             "description": f"Today's Featured Play: {matchup}. Variance: {edge}. View metrics now.",
             "image": top_play['Left_Logo'] or top_play['Right_Logo']
         }
-    return {"title": "Edge Engine Pro | CBB Analytics", "description": "Professional CBB analytics.", "image": ""}
+    return {
+        "title": "Edge Engine Pro | Live College Basketball Analytics",
+        "description": "Professional CBB analytics. Stationary pick logic for market-beating edge.",
+        "image": ""
+    }
 
 
 # --- CORE ROUTES ---
@@ -177,64 +183,61 @@ def get_seo_metadata(top_play=None):
 @app.route('/')
 def index():
     has_pro_key = request.args.get('key') == 'pro_access'
+    if request.args.get('session_id') and current_user.is_authenticated:
+        current_user.is_premium = True
+        db.session.commit()
+        flash("Pro Access Activated!", "success")
+
     is_premium = has_pro_key or (current_user.is_authenticated and current_user.is_premium)
     team_filter = request.args.get('filter', 'all')
     now_tz = datetime.now(pytz.timezone('US/Eastern'))
     today_target = f"{now_tz.month}/{now_tz.day}"
 
-    archive_data_map = {}
-    stats_out = {"last_50_w": 0, "last_50_l": 0, "last_50_pct": 0}
-    last_10 = []
+    archive_data_map, wins, losses, pct, last_10 = {}, 0, 0, 0.0, []
 
-    # 1. Fetch & Process Archive (Last 50 Logic)
+    # --- WIN RATE % CALCULATION FIX ---
     try:
         ares = requests.get(ARCHIVE_CSV_URL, timeout=10)
         if ares.status_code == 200:
-            adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')))
+            adf = pd.read_csv(io.StringIO(ares.content.decode('utf-8')), skipinitialspace=True)
+            if not adf.empty:
+                adf.columns = [c.strip() for c in adf.columns]
+                for _, row in adf.iterrows():
+                    eid_key = clean_id(row.get('ESPN_ID', '0'))
+                    if eid_key != "0": archive_data_map[eid_key] = row
 
-            # Map for stationary pick lookups
-            for _, row in adf.iterrows():
-                eid_key = clean_id(row.get('ESPN_ID', '0'))
-                if eid_key != "0": archive_data_map[eid_key] = row
+                # Clean and filter column for results
+                res_col = adf['Result'].astype(str).str.strip().str.upper()
+                wins = len(adf[res_col == 'WIN'])
+                losses = len(adf[res_col == 'LOSS'])
 
-            # Filter for completed games only
-            completed = adf[adf['Result'].isin(['WIN', 'LOSS', 'PUSH'])].copy()
-            completed['Date'] = pd.to_datetime(completed['Date'], errors='coerce')
-            completed = completed.sort_values('Date', ascending=False)
+                if (wins + losses) > 0:
+                    pct = round((wins / (wins + losses)) * 100, 1)
 
-            # Last 50 Stats
-            l50 = completed.head(50)
-            l50_w = len(l50[l50['Result'] == 'WIN'])
-            l50_l = len(l50[l50['Result'] == 'LOSS'])
-            denom = (l50_w + l50_l)
-            l50_pct = round((l50_w / denom) * 100, 1) if denom > 0 else 0
-
-            stats_out = {"last_50_w": l50_w, "last_50_l": l50_l, "last_50_pct": l50_pct}
-            last_10 = completed.head(10).to_dict('records')
+                last_10 = adf[res_col.isin(['WIN', 'LOSS', 'PUSH'])].tail(10).to_dict('records')[::-1]
     except Exception as e:
         print(f"Archive Error: {e}")
 
-    # 2. Fetch Live Sheet
     live_map = get_live_data()
     try:
         df = pd.read_csv(io.StringIO(requests.get(SHEET_URL).text))
     except:
         df = pd.DataFrame()
 
-    # 3. GSpread Client
     gc = get_gspread_client()
     archive_sheet, col_p_values = None, []
     if gc:
         try:
             archive_sheet = gc.open_by_key(SHEET_ID).worksheet("Archive")
             col_p_values = [clean_id(x) for x in archive_sheet.col_values(16)]
-        except:
-            pass
+        except Exception as e:
+            print(f"GSpread Error: {e}")
 
     all_games = []
     for _, row in df.iterrows():
         g_time = str(row.get('Game Time', ''))
-        if today_target not in g_time and "FINAL" not in g_time.upper(): continue
+        if today_target not in g_time and "FINAL" not in g_time.upper():
+            continue
 
         a_name, h_name = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
         ld = live_map.get(normalize(a_name), live_map.get(normalize(h_name), {
@@ -242,65 +245,81 @@ def index():
             "a_team": a_name, "h_team": h_name, "plays": []
         }))
         eid = clean_id(ld.get('id', '0'))
-        is_started = any(x in str(ld.get('status', '')).upper() for x in ["FINAL", "1ST", "2ND", "HALF"]) or ld.get(
-            'state') in ['in', 'post']
+        status_label = str(ld.get('status', '')).upper()
 
-        # STATIONARY PICK LOGIC: If game started, pull from Archive to lock picks
-        if is_started and eid in archive_data_map:
+        is_locked = any(x in status_label for x in ["PENDING", "FINAL", "1ST", "2ND", "HALF"]) or ld.get('state') in [
+            'in', 'post']
+
+        # STATIONARY PICK LOGIC
+        if is_locked and eid in archive_data_map:
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
             proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
                 hist.get('Edge'))
             stats = {
                 'ra': clean_val(hist.get('Away_Rank')), 'rh': clean_val(hist.get('Home_Rank')),
-                'sa': clean_val(hist.get('Away_SOS')), 'sh': clean_val(hist.get('Home_SOS')),
                 'pa': clean_val(hist.get('Away_PPG')), 'ph': clean_val(hist.get('Home_PPG')),
-                'pga': clean_val(hist.get('Away_PPGA')), 'pgh': clean_val(hist.get('Home_PPGA'))
+                'pga': clean_val(hist.get('Away_PPGA')), 'pgh': clean_val(hist.get('Home_PPGA')),
+                'sa': clean_val(hist.get('Away_SOS')), 'sh': clean_val(hist.get('Home_SOS')),
+                'l3pa': clean_val(hist.get('Away_L3_PPG')), 'l3ph': clean_val(hist.get('Home_L3_PPG')),
+                'l3pga': clean_val(hist.get('Away_L3_PPGA')), 'l3pgh': clean_val(hist.get('Home_L3_PPGA'))
             }
         else:
             stats = {
                 'ra': clean_val(row.get('Rank Away')), 'rh': clean_val(row.get('Rank Home')),
-                'sa': clean_val(row.get('SOS Away')), 'sh': clean_val(row.get('SOS Home')),
                 'pa': clean_val(row.get('PPG Away')), 'ph': clean_val(row.get('PPG Home')),
-                'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
                 'pga': clean_val(row.get('PPGA Away')), 'pgh': clean_val(row.get('PPGA Home')),
+                'sa': clean_val(row.get('SOS Away')), 'sh': clean_val(row.get('SOS Home')),
+                'l3pa': clean_val(row.get('L3 PPG Away')), 'l3ph': clean_val(row.get('L3 PPG Home')),
                 'l3pga': clean_val(row.get('L3 PPGA Away')), 'l3pgh': clean_val(row.get('L3 PPGA Home'))
             }
-
-            # Geometric Math
-            away_off = (stats['pa'] + stats['l3pa']) / 2
-            home_def = (stats['pgh'] + stats['l3pgh']) / 2
-            home_off = (stats['ph'] + stats['l3ph']) / 2
-            away_def = (stats['pga'] + stats['l3pga']) / 2
-            rank_gap = stats['rh'] - stats['ra']
-            boost = rank_gap * RANK_INFLUENCE
-
-            proj_l = round(((away_off * home_def) ** 0.5) + (boost / 2), 1)
-            proj_r = round(((home_off * away_def) ** 0.5) + HCA - (boost / 2), 1)
-
             fd_spread = clean_val(row.get('FD Spread'), default=None)
+            proj_l = round(((stats['pa'] * (1 + (175 - stats['sa']) / 1000)) + stats['pgh']) / 2, 1)
+            proj_r = round(((stats['ph'] * (1 + (175 - stats['sh']) / 1000)) + stats['pga']) / 2 + 3.2, 1)
+
             if fd_spread is None:
                 pick, p_spr_val, abs_edge = "TBD", 0.0, 0.0
             else:
-                our_spread = proj_l - proj_r
-                edge_val = fd_spread - our_spread
-                pick, p_spr_val = (h_name, fd_spread) if edge_val > 0 else (a_name, -fd_spread)
-                abs_edge = round(abs(edge_val), 1)
+                edge = fd_spread - (proj_l - proj_r)
+                pick, p_spr_val = (h_name, fd_spread) if edge > 0 else (a_name, -fd_spread)
+                abs_edge = round(abs(edge), 1)
 
-        can_view = is_premium or (stats['ra'] > 100)
-        act = "PLAY" if abs_edge >= 3.0 else "FADE"
+        if team_filter == 'top25' and not (stats['ra'] <= 25 or stats['rh'] <= 25): continue
+        if team_filter == 'top100' and not (stats['ra'] <= 100 or stats['rh'] <= 100): continue
+
+        is_public_game = (stats['ra'] > 100)
+        can_view = is_premium or is_public_game
+
+        if abs_edge >= 8.0:
+            action_val, rec_val = "PLAY", "🔥 AUTO-PLAY"
+        elif abs_edge >= 5.0:
+            action_val, rec_val = "PLAY", "✅ STRONG"
+        elif abs_edge >= 3.0:
+            action_val, rec_val = "PLAY", "⚠️ LOW"
+        else:
+            action_val, rec_val = "FADE", "❌ NO PLAY"
 
         game_obj = {
-            'Matchup': f"{a_name} @ {h_name}", 'ESPN_ID': eid,
+            'Matchup': f"{a_name} @ {h_name}",
+            'ESPN_ID': eid,
             'Live_Score': f"{ld.get('s_away', 0)}-{ld.get('s_home', 0)}",
-            'Raw_Pick': pick, 'Raw_Spread': p_spr_val,
+            'Raw_Pick': pick,
+            'Raw_Spread': p_spr_val,
             'Pick': pick.upper() if can_view else "LOCKED",
             'Pick_Spread': f"{p_spr_val:+g}" if (can_view and pick != "TBD") else "???",
-            'can_view': can_view, 'Left_Proj': proj_l, 'Right_Proj': proj_r,
+            'can_view': can_view,
+            'Left_Proj': proj_l,
+            'Right_Proj': proj_r,
             'Left_Logo': ld.get('a_logo') or row.get('Away Logo'),
             'Right_Logo': ld.get('h_logo') or row.get('Home Logo'),
-            'Edge': abs_edge, 'status': ld['status'], 'is_live': ld.get('state') == 'in',
-            'Action': act, 'stats': stats
+            'Edge': abs_edge,
+            'status': ld['status'],
+            'is_live': ld.get('state') == 'in',
+            'last_plays': ld.get('plays', []),
+            'Action': action_val,
+            'Rec': rec_val,
+            'stats': stats,
+            'is_public': is_public_game
         }
 
         if eid != "0" and ld.get('state') in ['in', 'post']:
@@ -311,51 +330,136 @@ def index():
     top_plays = sorted([g for g in all_games if g['can_view'] and g['Action'] == 'PLAY' and g['Raw_Pick'] != "TBD"],
                        key=lambda x: x['Edge'], reverse=True)
 
+    seo = get_seo_metadata(top_plays[0] if top_plays else None)
+
     return render_template('index.html',
                            games=all_games,
                            top_plays=top_plays,
-                           stats=stats_out,
+                           stats={"W": wins, "L": losses, "PCT": pct},
                            last_10=last_10,
                            is_premium=is_premium,
-                           seo=get_seo_metadata(top_plays[0] if top_plays else None))
+                           seo=seo)
 
 
-# --- AUTH ROUTES ---
+# --- USER & AUTH ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = db.session.execute(select(User).filter_by(email=request.form.get('email').lower())).scalar_one_or_none()
-        if u and check_password_hash(u.password, request.form.get('password')):
+        email, pw = request.form.get('email').lower(), request.form.get('password')
+        u = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
+        if u and check_password_hash(u.password, pw):
             login_user(u)
             return redirect(url_for('index'))
+        flash("Invalid login.", "danger")
     return render_template('login.html')
 
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        u = User(email=request.form.get('email').lower(),
-                 password=generate_password_hash(request.form.get('password'), method='pbkdf2:sha256'))
-        db.session.add(u)
+        email, password = request.form.get('email').lower(), request.form.get('password')
+        if db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none():
+            flash("Email exists.", "warning")
+            return redirect(url_for('signup'))
+        new_user = User(email=email, password=generate_password_hash(password, method='pbkdf2:sha256'))
+        db.session.add(new_user)
         db.session.commit()
-        login_user(u)
+        login_user(new_user)
         try:
-            checkout = stripe.checkout.Session.create(
-                line_items=[{'price': 'price_1Sw38dJ6FrWhUke2VG2oDzLY', 'quantity': 1}], mode='subscription',
+            checkout_session = stripe.checkout.Session.create(
+                line_items=[{'price': 'price_1Sw38dJ6FrWhUke2VG2oDzLY', 'quantity': 1}],
+                mode='subscription',
                 success_url=url_for('index', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
-                cancel_url=url_for('signup', _external=True), customer_email=u.email)
-            return redirect(checkout.url, code=303)
+                cancel_url=url_for('signup', _external=True),
+                customer_email=email
+            )
+            return redirect(checkout_session.url, code=303)
         except Exception as e:
             return str(e)
     return render_template('subscribe.html')
 
 
 @app.route('/logout')
+@login_required
 def logout():
     logout_user()
+    flash("Successfully logged out.", "info")
     return redirect(url_for('login'))
 
 
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email').lower()
+        user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
+        if user:
+            token = secrets.token_urlsafe(32)
+            user.reset_token = token
+            db.session.commit()
+            reset_url = url_for('reset_password', token=token, _external=True)
+            try:
+                resend.Emails.send({
+                    "from": "Edge Engine Pro <auth@edgeenginepro.com>",
+                    "to": email,
+                    "subject": "Reset Your Password",
+                    "html": f"<p>Click <a href='{reset_url}'>here</a> to reset your password.</p>"
+                })
+            except Exception as e:
+                print(f"Email Error: {e}")
+        flash("If that email is registered, a reset link has been sent.", "info")
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    user = db.session.execute(select(User).filter_by(reset_token=token)).scalar_one_or_none()
+    if not user:
+        flash("Invalid or expired token.", "danger")
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        new_pw = request.form.get('password')
+        user.password = generate_password_hash(new_pw, method='pbkdf2:sha256')
+        user.reset_token = None
+        db.session.commit()
+        flash("Password updated! Please log in.", "success")
+        return redirect(url_for('login'))
+    return render_template('reset_password.html', token=token)
+
+
+@app.route('/api/updates')
+def ghost_updates():
+    return jsonify(get_live_data())
+
+
+@app.route('/set_parlay_size', methods=['POST'])
+def set_size():
+    session['team_count'] = request.json.get('count')
+    return jsonify(success=True)
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    lines = ["User-agent: *", "Allow: /", "", "Sitemap: https://betifysports.com/sitemap.xml"]
+    response = make_response("\n".join(lines))
+    response.headers["Content-Type"] = "text/plain"
+    return response
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    today = datetime.now().strftime('%Y-%m-%d')
+    pages = [
+        {'loc': 'https://betifysports.com/', 'lastmod': today, 'priority': '1.0'},
+        {'loc': 'https://betifysports.com/archive', 'lastmod': today, 'priority': '0.8'}
+    ]
+    sitemap_xml = render_template('sitemap_template.xml', pages=pages)
+    response = make_response(sitemap_xml)
+    response.headers["Content-Type"] = "application/xml"
+    return response
+
+
 if __name__ == '__main__':
-    with app.app_context(): db.create_all()
+    with app.app_context():
+        db.create_all()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
