@@ -139,17 +139,13 @@ def get_live_data():
                         f"http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={eid}",
                         timeout=3).json()
 
-                    # CUMULATIVE POINT GROWTH LOGIC
-                    # This ensures the lines start at (0,0) and move Up and To the Right
                     plays = summary.get('plays', [])
                     if plays:
                         m_home, m_away = [0], [0]
-                        # We iterate through all plays to build the full "Up and Right" trend
                         for p in plays:
                             if 'homeScore' in p and 'awayScore' in p:
                                 h_score = int(p['homeScore'])
                                 a_score = int(p['awayScore'])
-                                # Only append if the score actually changed to keep the line moving
                                 if h_score != m_home[-1] or a_score != m_away[-1]:
                                     m_home.append(h_score)
                                     m_away.append(a_score)
@@ -157,7 +153,6 @@ def get_live_data():
                         data["momentum_home"] = m_home
                         data["momentum_away"] = m_away
 
-                        # Last 3 Plays
                         formatted_plays = []
                         for p in plays[-3:]:
                             clock = p.get('clock', {}).get('displayValue', '--:--')
@@ -178,15 +173,28 @@ def get_live_data():
 
 def auto_log_game(game_data, stats, ld, archive_sheet, col_p_values):
     eid = str(game_data['ESPN_ID']).strip()
-    if eid == "0" or not archive_sheet or game_data['Raw_Pick'] == "TBD": return
+    if eid == "0" or not archive_sheet or game_data['Raw_Pick'] == "TBD":
+        return
     try:
         is_finished = ld.get('state') == 'post'
         if eid in col_p_values:
             row_idx = col_p_values.index(eid) + 1
             if is_finished:
                 score_a, score_h = ld['s_away'], ld['s_home']
-                archive_sheet.update(f"C{row_idx}:D{row_idx}", [
-                    ["WIN" if "WIN" in str(game_data.get('Rec')) else "LOSS", f"{score_a}-{score_h}"]])
+                pick_team = game_data['Raw_Pick']
+                spread = game_data['Raw_Spread']
+
+                # Determine result based on spread-adjusted score
+                is_away_pick = normalize(pick_team) == normalize(ld['a_team'])
+                if is_away_pick:
+                    diff = (score_a + spread) - score_h
+                else:
+                    diff = (score_h + spread) - score_a
+
+                result = "PUSH" if diff == 0 else ("WIN" if diff > 0 else "LOSS")
+
+                archive_sheet.update(f"C{row_idx}:D{row_idx}", [[result, f"{score_a}-{score_h}"]])
+
         elif ld.get('state') in ['in', 'post']:
             new_row = [
                 datetime.now(pytz.timezone('US/Eastern')).strftime("%m/%d/%Y"),
@@ -286,7 +294,6 @@ def index():
             'in', 'post']
 
         if (is_locked or eid in archive_data_map) and eid in archive_data_map:
-            # USER CONSTRAINT: STATIONARY PICK FROM ARCHIVE
             hist = archive_data_map[eid]
             pick, p_spr_val = str(hist.get('Pick', 'N/A')), clean_val(hist.get('Pick_Spread'))
             proj_l, proj_r, abs_edge = clean_val(hist.get('Proj_Away')), clean_val(hist.get('Proj_Home')), clean_val(
