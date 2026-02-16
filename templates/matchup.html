@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}{{ g.full_stats.away_name }} @ {{ g.full_stats.home_name }} | Edge Pro{% endblock %}
+
+{% block extra_css %}
+    /* Hero Section */
+    .matchup-header {
+        background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, rgba(5, 7, 8, 0) 100%);
+        padding: 30px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .header-logo { width: 80px; height: 80px; object-fit: contain; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4)); }
+
+    @media (max-width: 768px) {
+        .header-logo { width: 50px; height: 50px; }
+        .matchup-header h3 { font-size: 1rem; }
+        .proj-val { font-size: 1.1rem !important; }
+        .projection-pill { padding: 8px !important; margin-top: 10px !important; }
+    }
+
+    /* Proj Pills */
+    .projection-pill {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        padding: 12px;
+        border-radius: 20px;
+        margin-top: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .proj-val { font-size: 1.4rem; font-weight: 900; color: var(--text-main); }
+
+    /* Matchup Predictor Bar */
+    .predictor-wrapper {
+        max-width: 600px;
+        margin: 20px auto 0;
+    }
+    .progress-label { font-size: 0.65rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* ESPN Frame - Responsive */
+    .chart-viewport {
+        width: 100%; height: 520px; overflow: hidden; position: relative;
+        border-radius: 28px; border: 1px solid var(--border); background: #000;
+    }
+    .chart-viewport iframe {
+        position: absolute; top: -245px; left: 50%; transform: translateX(-50%);
+        width: 1200px; height: 1100px; border: none;
+        transform-origin: top center;
+    }
+
+    @media (max-width: 768px) {
+        .chart-viewport { height: 260px; border-radius: 15px; }
+        .chart-viewport iframe {
+            transform: translateX(-50%) scale(0.45);
+            top: -110px;
+        }
+    }
+
+    /* Intel & Analytics Cards */
+    .analysis-container { background: var(--card-bg); border-radius: 24px; border: 1px solid var(--border); overflow: hidden; }
+    .category-divider {
+        background: rgba(255,255,255,0.03); padding: 12px 20px; font-size: 0.7rem; font-weight: 900;
+        color: var(--primary); text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid var(--border);
+    }
+    .stat-grid-row { display: flex; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+    .grid-val { width: 30%; font-size: 1.1rem; font-weight: 800; }
+    .grid-label { width: 40%; text-align: center; font-size: 0.65rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; }
+    .text-home { color: var(--primary); text-align: right; }
+    .text-away { color: var(--text-main); text-align: left; }
+
+    .leader-headshot { width: 45px; height: 45px; border-radius: 50%; background: #000; border: 2px solid var(--border); }
+    .edge-footer { background: var(--primary); padding: 25px; text-align: center; color: white; }
+{% endblock %}
+
+{% block content %}
+<div class="matchup-header text-center">
+    <div class="container">
+        <div class="row align-items-center g-2">
+            <div class="col-4">
+                <img src="{{ g.L_Logo }}" class="header-logo mb-2">
+                <h3 class="fw-black mb-0">{{ g.full_stats.away_name }}</h3>
+                <div class="projection-pill mx-auto" style="max-width: 130px;">
+                    <div class="stat-label">SYSTEM PROJ</div>
+                    <div class="proj-val">{{ g.Left_Proj }}</div>
+                </div>
+            </div>
+
+            <div class="col-4">
+                {% if g.is_locked %}
+                    <div class="locked-tag mb-1" style="color: var(--accent); font-weight: 900; font-size: 0.7rem;">🔒 LOCKED</div>
+                    <div class="display-4 fw-black" style="letter-spacing: -2px;">{{ g.Live_Score }}</div>
+                {% elif g.status_state == 'in' %}
+                    <div class="live-tag mb-1" style="color: #ff4757; font-weight: 900; font-size: 0.7rem;">● LIVE</div>
+                    <div class="display-4 fw-black" style="letter-spacing: -2px;">{{ g.Live_Score }}</div>
+                {% else %}
+                    <div class="h6 fw-bold text-dim mb-2">TIP-OFF</div>
+                    <div class="display-5 fw-black opacity-25">VS</div>
+                {% endif %}
+                <div class="mt-2">
+                    <span class="badge bg-primary px-3 py-2 rounded-pill fw-black">
+                        PICK: {{ g.Pick_Spread }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="col-4">
+                <img src="{{ g.R_Logo }}" class="header-logo mb-2">
+                <h3 class="fw-black mb-0 text-primary">{{ g.full_stats.home_name }}</h3>
+                <div class="projection-pill mx-auto border-primary" style="max-width: 130px; background: rgba(59, 130, 246, 0.05);">
+                    <div class="stat-label text-primary">SYSTEM PROJ</div>
+                    <div class="proj-val text-primary">{{ g.Right_Proj }}</div>
+                </div>
+            </div>
+        </div>
+
+        {% if g.intel.prob_away > 0 %}
+        <div class="predictor-wrapper px-3">
+            <div class="d-flex justify-content-between progress-label mb-2">
+                <span>ESPN Predictor</span>
+                <span>{{ g.intel.prob_away }}% vs {{ g.intel.prob_home }}%</span>
+            </div>
+            <div class="progress" style="height: 12px; background: var(--border); border-radius: 6px;">
+                <div class="progress-bar" style="width: {{ g.intel.prob_away }}%; background: var(--text-dim);"></div>
+                <div class="progress-bar" style="width: {{ g.intel.prob_home }}%; background: var(--primary);"></div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="container mt-4 mb-5">
+    <div class="row g-4">
+        <div class="col-lg-7 order-1">
+            <h5 class="fw-black mb-3">Pre-Game Intelligence</h5>
+            <div class="analysis-container p-4 mb-4">
+                <div class="row text-center g-3">
+                    <div class="col-6">
+                        <div class="stat-label">Broadcast</div>
+                        <div class="fw-bold">{{ g.intel.broadcast }}</div>
+                    </div>
+                    <div class="col-6 border-start border-secondary">
+                        <div class="stat-label">Location</div>
+                        <div class="fw-bold small">{{ g.intel.venue }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-black mb-0">Win Probability Flow</h5>
+                <span class="stat-label d-none d-sm-inline">ESPN Gamecast</span>
+            </div>
+            {% if g.status_state in ['in', 'post'] %}
+                <div class="chart-viewport shadow-lg">
+                    <iframe src="https://www.espn.com/mens-college-basketball/gamecast?gameId={{ g.ESPN_ID }}"></iframe>
+                </div>
+            {% else %}
+                <div class="analysis-container d-flex flex-column align-items-center justify-content-center" style="height: 300px; border: 2px dashed var(--border);">
+                    <div class="display-4 mb-2">🕒</div>
+                    <h6 class="fw-black">Graph initializes at tip-off</h6>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-5 order-2">
+            <h5 class="fw-black mb-3">Season Leaders (PPG)</h5>
+            <div class="analysis-container mb-4">
+                <div class="stat-grid-row py-4">
+                    <div class="grid-val text-away">
+                        <img src="{{ g.intel.away_leader.headshot }}" class="leader-headshot mb-2">
+                        <div class="fw-bold small">{{ g.intel.away_leader.name }}</div>
+                    </div>
+                    <div class="grid-label">Points Average</div>
+                    <div class="grid-val text-home">
+                        <img src="{{ g.intel.home_leader.headshot }}" class="leader-headshot mb-2" style="border-color: var(--primary);">
+                        <div class="fw-bold small text-primary">{{ g.intel.home_leader.name }}</div>
+                    </div>
+                </div>
+                <div class="stat-grid-row" style="border-bottom: none;">
+                    <div class="grid-val text-away h4 fw-black">{{ g.intel.away_leader.val }}</div>
+                    <div class="grid-label">AVG</div>
+                    <div class="grid-val text-home h4 fw-black text-primary">{{ g.intel.home_leader.val }}</div>
+                </div>
+            </div>
+
+            <h5 class="fw-black mb-3">System Analytics</h5>
+            <div class="analysis-container shadow-lg">
+                <div class="category-divider">Scoring & Momentum</div>
+                <div class="stat-grid-row">
+                    <div class="grid-val text-away">{{ g.full_stats.ppg_a }}</div>
+                    <div class="grid-label">Season PPG</div>
+                    <div class="grid-val text-home">{{ g.full_stats.ppg_h }}</div>
+                </div>
+                <div class="stat-grid-row">
+                    <div class="grid-val text-away text-info">{{ g.full_stats.l3_ppg_a }}</div>
+                    <div class="grid-label">L3 Momentum</div>
+                    <div class="grid-val text-home text-info">{{ g.full_stats.l3_ppg_h }}</div>
+                </div>
+
+                <div class="category-divider">Defense & Ranking</div>
+                <div class="stat-grid-row">
+                    <div class="grid-val text-away">{{ g.full_stats.ppga_a }}</div>
+                    <div class="grid-label">Allowed</div>
+                    <div class="grid-val text-home">{{ g.full_stats.ppga_h }}</div>
+                </div>
+                <div class="stat-grid-row">
+                    <div class="grid-val text-away">#{{ g.full_stats.rank_a | int }}</div>
+                    <div class="grid-label">NET Rank</div>
+                    <div class="grid-val text-home">#{{ g.full_stats.rank_h | int }}</div>
+                </div>
+
+                <div class="edge-footer">
+                    <div class="small fw-bold text-white-50 text-uppercase mb-1">Model Value Edge</div>
+                    <div class="display-5 fw-black">+{{ g.Edge }}</div>
+                </div>
+            </div>
+
+            <a href="/" class="btn btn-outline-secondary w-100 mt-4 rounded-pill fw-bold" style="border-color: var(--border);">← BACK TO DASHBOARD</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

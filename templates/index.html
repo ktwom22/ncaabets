@@ -3,522 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live College Basketball Scores & Play-by-Play | Edge Engine Pro</title>
-    <meta name="description" content="Real-time NCAA basketball live scores, AI-powered play-by-play updates, and professional betting edges for the 2026 season.">
-    <meta name="keywords" content="live basketball scores, NCAA play by play, college basketball betting picks, live sports ticker, basketball analytics">
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LiveBlogPosting",
-      "headline": "Live College Basketball Scoreboard & Play-by-Play Updates",
-      "description": "Real-time updates and AI-driven betting insights for today's NCAA matchups.",
-      "coverageStartTime": "2026-02-14T12:00:00Z",
-      "author": {
-        "@type": "Organization",
-        "name": "Edge Engine Pro"
-      }
-    }
-    </script>
-
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VGV5RCKBP4"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-VGV5RCKBP4');
-    </script>
-
+    <title>Edge Engine Pro | Live Analytics</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
+        /* --- HIGH CONTRAST VARIABLES --- */
         :root {
-            --bg: #f0f2f5;
-            --card: #ffffff;
-            --border: #dcdfe4;
-            --accent: #0056b3;
-            --text: #1c1e21;
-            --success: #28a745;
-            --danger: #dc3545;
-            --warning: #f39c12;
-            --locked: #6c757d;
-            --ticker-bg: #1a1a1a;
-            --espn-red: #cc0000;
-            --sub-bg: #f8f9fa;
-            --away-flow: #0056b3;
-            --home-flow: #e01931;
+            /* Dark Mode (Default) */
+            --bg: #050708;
+            --card-bg: #111418;
+            --primary: #3b82f6; /* Vibrant Blue */
+            --accent: #fbbf24;  /* Vibrant Gold */
+            --text-main: #ffffff;
+            --text-dim: #a1a1aa;
+            --border: #27272a;
+            --success: #22c55e;
+            --card-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        body {
-            background-color: var(--bg); color: var(--text);
-            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow-x: hidden;
-            padding-bottom: 80px;
+        [data-theme="light"] {
+            --bg: #f4f4f5;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --accent: #d97706;
+            --text-main: #09090b;
+            --text-dim: #71717a;
+            --border: #e4e4e7;
+            --success: #16a34a;
+            --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
 
-        /* --- PAYWALL & UI --- */
-        .paywall-container { position: relative; overflow: hidden; }
-        .content-blurred { filter: blur(14px); pointer-events: none; user-select: none; }
-        .paywall-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.85);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 100; text-align: center; padding: 20px;
+        body { background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text-main); transition: background 0.3s ease; }
+
+        /* Theme Toggle Button */
+        .theme-toggle {
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 50px;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 0.8rem;
         }
-        .unlock-btn {
-            background: var(--accent); color: white; border: none;
-            padding: 12px 25px; border-radius: 8px; font-weight: 800;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: 0.2s;
-            text-decoration: none;
+
+        /* --- UI COMPONENTS --- */
+        .game-card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            box-shadow: var(--card-shadow);
+            transition: transform 0.2s ease;
         }
-        .unlock-btn:hover { transform: translateY(-2px); color: white; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+        .game-card:hover { transform: translateY(-5px); }
 
-        /* --- TICKER --- */
-        .ticker-wrap {
-            width: 100%; overflow: hidden; background-color: var(--ticker-bg);
-            border-bottom: 1px solid var(--border); height: 45px;
-            display: flex; align-items: center; position: sticky; top: 0; z-index: 1000;
-        }
-        .ticker { display: flex; white-space: nowrap; animation: ticker-move 90s linear infinite; color: #fff; }
-        .ticker:hover { animation-play-state: paused; }
-        @keyframes ticker-move { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ticker-item { display: inline-flex; align-items: center; padding: 0 30px; border-right: 1px solid #333; height: 45px; }
-        .espn-tag { font-size: 0.6rem; font-weight: 900; color: var(--espn-red); letter-spacing: 1px; margin-right: 10px; }
-        .tick-logo { width: 20px; height: 20px; margin: 0 8px; object-fit: contain; }
-        .tick-score { font-family: 'Courier New', monospace; font-weight: 900; color: #58a6ff; margin: 0 10px; }
+        .badge-play { font-weight: 900; font-size: 0.8rem; letter-spacing: 0.5px; border-radius: 8px; padding: 6px 14px; }
+        .bg-play { background: #15803d; color: #f0fdf4; border: 1px solid #22c55e; }
+        .bg-fade { background: #27272a; color: #e4e4e7; border: 1px solid #3f3f46; }
 
-        /* --- 3D INTERFACE --- */
-        .game-container { perspective: 1200px; height: 850px; margin-bottom: 20px; }
-        .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
-        .is-flipped .card-inner { transform: rotateY(180deg); }
-        .card-front, .card-back {
-            position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
-            border-radius: 12px; background: var(--card); border: 1px solid var(--border);
-            display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        .card-back { transform: rotateY(180deg); background: #fff; }
-        .back-header { background: #343a40; color: white; padding: 12px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+        .score-display { font-family: 'Monaco', monospace; font-size: 1.8rem; font-weight: 900; letter-spacing: -1px; }
+        .edge-glow { color: var(--success) !important; font-weight: 900; }
+        .ultra-edge { color: var(--accent) !important; font-weight: 900; text-shadow: 0 0 10px rgba(251, 191, 36, 0.2); }
 
-        /* --- BADGES & STATS --- */
-        .sos-badge { font-size: 0.55rem; background: #e9ecef; padding: 2px 5px; border-radius: 3px; font-weight: 700; color: #495057; display: inline-block; margin-top: 2px; }
-        .lock-badge {
-            position: absolute; top: 12px; left: 12px; background: #000; color: #ffd700;
-            padding: 4px 10px; border-radius: 4px; font-size: 0.6rem; font-weight: 900;
-            z-index: 10; border: 1px solid #ffd700; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        }
-        .bg-play { background: var(--success); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
-        .bg-fade { background: var(--border); color: var(--text); padding: 3px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; }
-
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; flex-grow: 1; }
-        .stat-column { padding: 15px; border-right: 1px solid var(--border); }
-        .stat-column:last-child { border-right: none; }
-        .stat-column h4 { font-size: 0.8rem; font-weight: 800; margin-bottom: 12px; border-bottom: 2px solid var(--bg); padding-bottom: 4px; }
-        .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.75rem; }
-        .stat-label { color: var(--locked); }
-        .stat-value { font-weight: 700; }
-
-        .t-logo { width: 55px; height: 55px; object-fit: contain; padding: 5px; background: #f9f9f9; border-radius: 8px; }
-        .proj-val { font-size: 1.8rem; font-weight: 900; color: #333; display: block; }
-        .live-score-val { font-family: 'Courier New', monospace; font-size: 1.6rem; font-weight: 900; color: var(--accent); }
-        .team-name-label { font-size: 0.65rem; font-weight: 800; color: #555; text-transform: uppercase; margin-top: 4px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        /* --- MOMENTUM --- */
-        .flow-container { background: #fff; padding: 12px 15px; border-top: 1px solid #eee; }
-        .flow-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .flow-label { font-size: 0.65rem; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
-        .flow-legend { display: flex; gap: 15px; }
-        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.6rem; font-weight: 800; }
-        .dot-away { width: 10px; height: 10px; border-radius: 2px; background: var(--away-flow); }
-        .dot-home { width: 10px; height: 10px; border-radius: 2px; background: var(--home-flow); }
-        .flow-svg { width: 100%; height: 120px; overflow: visible; background: #fcfcfc; border-radius: 4px; border-left: 1px solid #ddd; border-bottom: 1px solid #ddd; }
-        .grid-line { stroke: #e0e0e0; stroke-width: 0.8; }
-        .axis-text { fill: #444; font-size: 6px; font-weight: 900; }
-        .path-away-flow { stroke: var(--away-flow); stroke-width: 3.5; fill: none; transition: d 0.4s ease; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
-        .path-home-flow { stroke: var(--home-flow); stroke-width: 3.5; fill: none; transition: d 0.4s ease; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
-
-        /* --- PBP --- */
-        .live-pbp-container { background: #f8f9fa; padding: 10px 15px; border-top: 1px solid var(--border); min-height: 80px; display: flex; flex-direction: column; }
-        .pbp-label-mini { color: var(--accent); font-size: 0.65rem; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; display: block; }
-        .pbp-text-content { color: #333; font-size: 0.75rem; line-height: 1.3; overflow-y: auto; max-height: 60px; font-weight: 500; }
-
-        /* --- SIDEBARS --- */
-        .slider {
-            height: 100%; width: 0; position: fixed; top: 0; left: 0;
-            background: #fff; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 2001; overflow-y: auto; box-shadow: 10px 0 30px rgba(0,0,0,0.2);
-            padding-top: 60px; display: flex; flex-direction: column;
-        }
-        .slider-header { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; background: var(--accent); color: white; display: flex; justify-content: space-between; align-items: center; font-weight: 800; }
-        .close-slider { cursor: pointer; font-size: 1.5rem; line-height: 1; }
-        .stat-card-mini { background: var(--sub-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); width: 100%; }
-
-        /* --- PARLAY CONTROLS --- */
-        .leg-stepper { display: flex; align-items: center; justify-content: center; gap: 20px; background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-        .step-btn { background: #6f42c1; color: white; border: none; width: 30px; height: 30px; border-radius: 50%; font-weight: bold; }
-
-        /* --- FAB & MISC --- */
-        .fab-container { position: fixed; bottom: 25px; left: 20px; z-index: 3000; display: flex; gap: 12px; }
-        .fab { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 0.55rem; transition: 0.2s; }
-        .fab-parlay { background: #6f42c1; }
-        .pulse { color: #ff3e3e; animation: blink 1.5s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
-        .filter-bar { padding: 15px 0; display: flex; justify-content: center; gap: 10px; }
-        .btn-filter { border-radius: 20px; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; text-transform: uppercase; }
-        .share-btn { background: transparent; border: 1px solid var(--border); color: var(--locked); font-size: 0.6rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; }
+        .stat-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; font-weight: 800; letter-spacing: 1px; }
     </style>
 </head>
 <body>
 
-    <div id="stats-sidebar" class="slider" style="width: 0;">
-        <div class="slider-header">
-            <span>PERFORMANCE & ANALYTICS</span>
-            <span class="close-slider" onclick="toggleS('stats-sidebar')">&times;</span>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h1 class="fw-black mb-0" style="letter-spacing: -2px;">EDGE ENGINE <span class="text-primary">PRO</span></h1>
+            <p class="text-dim small mb-0" id="last-update">Syncing Neural Mapping...</p>
         </div>
-        <div class="p-3">
-            <div class="stat-card-mini bg-dark text-white mb-4">
-                <small class="opacity-75 fw-bold" style="font-size: 0.6rem; letter-spacing: 1px;">L50 WIN RATE</small>
-                <div class="h2 fw-bold mb-0 text-warning">{{ stats.PCT }}%</div>
+        <div class="d-flex align-items-center gap-3">
+            <button class="theme-toggle" onclick="toggleTheme()">🌓 TOGGLE THEME</button>
+            <div class="bg-dark px-4 py-2 rounded-4 border border-secondary text-center" style="background: var(--card-bg) !important;">
+                <div class="stat-label mb-0">Model Accuracy</div>
+                <div class="h4 fw-black text-success mb-0" id="win-pct">{{ stats.PCT }}%</div>
             </div>
+        </div>
+    </div>
 
-            <h6 class="fw-bold text-uppercase small text-muted mb-3" style="font-size: 0.65rem;">Last 10 Outcomes (Archive)</h6>
-            <div class="d-flex flex-column gap-1 mb-4">
-                {% for r in last_10 %}
-                <div class="d-flex justify-content-between align-items-center p-2 border-bottom" style="font-size: 0.7rem; background: #fff;">
-                    <div class="d-flex flex-column">
-                        <span class="fw-bold">{{ r.Pick }}</span>
-                        <small class="text-muted" style="font-size: 0.55rem;">{{ r.Date if r.Date else 'NCAA Basketball' }}</small>
-                    </div>
-                    <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' if r.Result == 'LOSS' else 'bg-secondary' }}" style="font-size: 0.55rem;">
-                        {{ r.Result }}
+    <div class="row g-4" id="game-container">
+        {% for g in games %}
+        <div class="col-md-4 game-column" data-id="{{ g.ESPN_ID }}">
+            <div class="game-card h-100 p-0" onclick="window.location.href='/matchup/{{ g.slug }}'">
+                <div class="p-3 d-flex justify-content-between align-items-center" style="background: rgba(128,128,128,0.05);">
+                    <span class="badge-play action-badge {{ 'bg-play' if g.Action == 'PLAY' else 'bg-fade' }}">{{ g.Action }}</span>
+                    <span class="status-live" style="color: #ff4757; font-weight: 800; font-size: 0.7rem;">
+                        {% if g.is_locked %}🔒 ARCHIVED{% else %}● LIVE DATA{% endif %}
                     </span>
                 </div>
-                {% endfor %}
-            </div>
 
-            <hr class="my-4">
-            <h6 class="fw-bold text-uppercase small text-muted mb-3" style="font-size: 0.65rem;">Top Board NET Rankings</h6>
-            <div class="d-flex flex-column gap-1">
-                {% for g in games[:8] %}
-                <div class="stat-card-mini d-flex justify-content-between align-items-center py-2 px-3">
-                    <span class="small fw-bold">{{ g.Matchup.split(' @ ')[0] }}</span>
-                    <span class="badge bg-primary" style="font-size: 0.6rem;">#{{ g.stats.ra }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
+                <div class="p-4 text-center">
+                    <div class="stat-label">AI Recommendation</div>
+                    <h4 class="fw-black mb-4">
+                        <span class="text-main">{{ g.Pick }}</span>
+                        <span class="text-primary">{{ g.Pick_Spread }}</span>
+                    </h4>
 
-    <div id="parlay-sidebar" class="slider" style="width: 0;">
-        <div class="slider-header" style="background: #6f42c1;">
-            <span>AI PARLAY BUILDER</span>
-            <span class="close-slider" onclick="toggleS('parlay-sidebar')">&times;</span>
-        </div>
-        <div class="p-3">
-            <label class="small fw-bold text-muted mb-2">SELECT NUMBER OF LEGS:</label>
-            <div class="leg-stepper">
-                <button class="step-btn" onclick="changeLegs(-1)">-</button>
-                <span id="leg-quantity" class="h4 mb-0 fw-bold">3</span>
-                <button class="step-btn" onclick="changeLegs(1)">+</button>
-            </div>
-
-            <button class="btn btn-dark w-100 fw-bold mb-4" onclick="generateAIParlay()">GENERATE BEST EDGE SLIP</button>
-
-            <div id="parlay-list" class="d-flex flex-column gap-2">
-                <p class="text-center text-muted py-5 small" id="parlay-empty-msg">No picks added to parlay yet.</p>
-            </div>
-
-            <div id="parlay-summary" class="mt-3 border-top pt-3" style="display: none;">
-                <div class="d-flex justify-content-between fw-bold mb-2">
-                    <span>Total Legs:</span>
-                    <span id="leg-count">0</span>
-                </div>
-                <button class="btn btn-link btn-sm w-100 text-muted mt-2" onclick="clearParlay()">Clear All</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="ticker-wrap">
-        <div class="ticker">
-            <div class="ticker-item"><span class="espn-tag">LIVE DATA ENGINE</span></div>
-            {% for g in games %}
-                <div class="ticker-item">
-                    <img src="{{ g.Left_Logo }}" class="tick-logo">
-                    <span class="tick-score" id="tick-{{ g.ESPN_ID }}">{{ g.Live_Score }}</span>
-                    <img src="{{ g.Right_Logo }}" class="tick-logo">
-                </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <nav class="navbar navbar-light bg-white border-bottom sticky-top shadow-sm" style="top: 45px;">
-        <div class="container d-flex justify-content-between align-items-center">
-            <span class="fw-bold">EDGE ENGINE <span class="text-primary">PRO</span></span>
-            <div id="sync-timer" class="text-muted fw-bold" style="font-size: 0.6rem;">INITIALIZING...</div>
-        </div>
-    </nav>
-
-    <div class="bg-white border-bottom">
-        <div class="container filter-bar">
-            {% set active_filter = request.args.get('filter', 'all') %}
-            <a href="{{ url_for('index', filter='all') }}" class="btn btn-filter {% if active_filter == 'all' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Full Board</a>
-            <a href="{{ url_for('index', filter='top25') }}" class="btn btn-filter {% if active_filter == 'top25' %}btn-primary text-white{% else %}btn-outline-secondary{% endif %}">Ranked Matchups</a>
-        </div>
-    </div>
-
-    <div class="container-fluid mt-4 px-lg-5">
-        <div class="row">
-            <div class="col-lg-9">
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4" id="games-grid">
-                    {% for g in games %}
-                        {% set is_started = g.is_live or g.status == 'FINAL' or 'HALFTIME' in g.status %}
-                        {% set is_public = (g.stats.ra | int > 100) %}
-                        {% set can_see = is_premium or is_public %}
-
-                        <div class="col game-card-unit"
-                             id="game-card-{{ g.ESPN_ID }}"
-                             data-id="{{ g.ESPN_ID }}"
-                             data-started="{{ 'true' if is_started else 'false' }}"
-                             data-edge="{{ g.Edge }}"
-                             data-pick="{{ g.Pick }}"
-                             data-spread="{{ g.Pick_Spread }}">
-
-                            <article class="game-container paywall-container">
-                                {% if not can_see %}
-                                <div class="paywall-overlay">
-                                    <h6 class="fw-bold">PRO PICK LOCKED</h6>
-                                    <p class="small text-muted mb-3">Top 100 Matchups require a Pro subscription.</p>
-                                    <a href="/login" class="unlock-btn mt-2">UPGRADE</a>
-                                </div>
-                                {% endif %}
-
-                                <div class="card-inner shadow-sm {% if not can_see %}content-blurred{% endif %}">
-                                    <div class="card-front" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                        <div id="lock-{{ g.ESPN_ID }}" class="lock-badge" style="display: {{ 'block' if is_started else 'none' }};">STATIONARY PICK</div>
-
-                                        <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background: var(--sub-bg);">
-                                            <span class="{% if g.Action == 'PLAY' %}bg-play{% else %}bg-fade{% endif %}">{{ g.Action }}</span>
-                                            <div class="d-flex gap-2">
-                                                <button class="share-btn" onclick="shareCard('{{ g.ESPN_ID }}', event)">SHARE</button>
-                                                {% if g.is_live %}<small class="text-danger fw-bold pulse" style="font-size: 0.65rem;">● LIVE</small>{% endif %}
-                                            </div>
-                                        </div>
-
-                                        <div class="text-center p-3">
-                                            <div class="mb-3">
-                                                <small class="text-muted d-block" style="font-size: 0.55rem;">AI SELECTION</small>
-                                                <div class="fw-bold" style="font-size: 1.1rem;">
-                                                    {{ g.Pick }} <span class="text-warning">{{ g.Pick_Spread }}</span>
-                                                </div>
-                                                <div class="mt-2">
-                                                    {% if not is_started %}
-                                                    <button class="btn btn-sm btn-outline-primary fw-bold" style="font-size: 0.6rem;" onclick="addToParlay('{{ g.ESPN_ID }}', '{{ g.Pick }}', '{{ g.Pick_Spread }}', event)">+ ADD TO PARLAY</button>
-                                                    {% else %}
-                                                    <span class="badge bg-light text-muted" style="font-size: 0.55rem;">LOCKED</span>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-
-                                            <div class="d-flex justify-content-around align-items-center">
-                                                <div class="text-center" style="width: 35%;">
-                                                    <img src="{{ g.Left_Logo }}" class="t-logo mb-1">
-                                                    <span class="team-name-label">{{ g.Matchup.split(' @ ')[0] }}</span>
-                                                    <span class="proj-val">{{ g.Left_Proj }}</span>
-                                                </div>
-                                                <div>
-                                                    <div class="live-score-val" id="score-{{ g.ESPN_ID }}">{{ g.Live_Score }}</div>
-                                                    <small class="text-muted fw-bold" style="font-size: 0.5rem;">LIVE</small>
-                                                </div>
-                                                <div class="text-center" style="width: 35%;">
-                                                    <img src="{{ g.Right_Logo }}" class="t-logo mb-1">
-                                                    <span class="team-name-label">{{ g.Matchup.split(' @ ')[1] }}</span>
-                                                    <span class="proj-val">{{ g.Right_Proj }}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="flow-container">
-                                            <svg class="flow-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                                <path id="flow-away-{{ g.ESPN_ID }}" class="path-away-flow" d="M 0 100" />
-                                                <path id="flow-home-{{ g.ESPN_ID }}" class="path-home-flow" d="M 0 100" />
-                                            </svg>
-                                        </div>
-
-                                        <div class="live-pbp-container" style="display: {{ 'flex' if g.is_live else 'none' }};">
-                                            <span class="pbp-label-mini">Recent Play</span>
-                                            <div id="pbp-text-{{ g.ESPN_ID }}" class="pbp-text-content">{{ g.last_play or "Tracking..." }}</div>
-                                        </div>
-
-                                        <div class="row g-0 border-top text-center p-3 mt-auto" style="background: var(--sub-bg);">
-                                            <div class="col-6 border-end">
-                                                <span id="status-{{ g.ESPN_ID }}" class="fw-bold text-primary" style="font-size: 0.75rem;">{{ g.status }}</span>
-                                            </div>
-                                            <div class="col-6">
-                                                <b class="text-success">+{{ g.Edge }} PTS EDGE</b>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="card-back" onclick="this.parentElement.parentElement.classList.toggle('is-flipped')">
-                                        <div class="back-header text-center">Power Rankings</div>
-                                        <div class="stats-grid">
-                                            <div class="stat-column">
-                                                <div class="stat-row"><span>NET</span><span>#{{ g.stats.ra }}</span></div>
-                                                <div class="stat-row"><span>SOS</span><span>{{ g.stats.sa }}</span></div>
-                                            </div>
-                                            <div class="stat-column">
-                                                <div class="stat-row"><span>NET</span><span>#{{ g.stats.rh }}</span></div>
-                                                <div class="stat-row"><span>SOS</span><span>{{ g.stats.sh }}</span></div>
-                                            </div>
-                                        </div>
-                                        <div class="p-3"><a href="https://www.espn.com/mens-college-basketball/game/_/gameId/{{ g.ESPN_ID }}" target="_blank" class="btn btn-sm btn-dark w-100 fw-bold">ESPN</a></div>
-                                    </div>
-                                </div>
-                            </article>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <img src="{{ g.Left_Logo }}" style="width: 50px; height: 50px; object-fit: contain;">
+                            <div class="fw-bold mt-2 small text-dim">{{ g.Left_Proj }}</div>
                         </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <div class="col-lg-3 d-none d-lg-block">
-                <section class="stat-card-mini bg-primary text-white p-3 shadow-sm" style="margin:0;">
-                    <small class="opacity-75 fw-bold">L50 WIN RATE</small>
-                    <div class="h2 fw-bold mb-0">{{ stats.PCT }}%</div>
-                </section>
-                <section class="card shadow-sm mt-3">
-                    <div class="card-header bg-white fw-bold small">LAST 10 ARCHIVE</div>
-                    <div class="card-body p-2 d-flex flex-column">
-                        {% for r in last_10 %}
-                        <div class="small border-bottom py-2 d-flex justify-content-between align-items-center">
-                            <span>{{ r.Pick }}</span>
-                            <span class="badge {{ 'bg-success' if r.Result == 'WIN' else 'bg-danger' }}">{{ r.Result }}</span>
+                        <div class="score-display">{{ g.Live_Score }}</div>
+                        <div>
+                            <img src="{{ g.Right_Logo }}" style="width: 50px; height: 50px; object-fit: contain;">
+                            <div class="fw-bold mt-2 small text-primary">{{ g.Right_Proj }}</div>
                         </div>
-                        {% endfor %}
                     </div>
-                </section>
+
+                    <div class="d-flex justify-content-between align-items-center pt-3 border-top border-secondary" style="border-color: var(--border) !important;">
+                        <div class="text-start">
+                            <span class="stat-label d-block">Market Edge</span>
+                            <span class="edge-val {{ 'ultra-edge' if g.Edge >= 5.0 else 'edge-glow' }}">+{{ g.Edge }}</span>
+                        </div>
+                        <button class="btn btn-sm btn-primary rounded-pill px-3 fw-bold" onclick="event.stopPropagation(); openStatsModal({{ g.full_stats | tojson }})">STATS</button>
+                    </div>
+                </div>
             </div>
         </div>
+        {% endfor %}
     </div>
+</div>
 
-    <div class="fab-container">
-        <button class="fab" onclick="toggleS('stats-sidebar')">STATS</button>
-        <button class="fab fab-parlay" onclick="toggleS('parlay-sidebar')">PARLAY</button>
-    </div>
+<script>
+    // Theme Logic
+    function toggleTheme() {
+        const body = document.body;
+        const currentTheme = body.getAttribute('data-theme');
+        const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
+        body.setAttribute('data-theme', nextTheme);
+        localStorage.setItem('theme', nextTheme);
+    }
 
-    <script>
-        let parlayPicks = [];
-        let legCountTarget = 3;
-
-        function toggleS(id) {
-            const s = document.getElementById(id);
-            const targetWidth = window.innerWidth < 600 ? '100%' : '380px';
-            if (s.style.width === '0px' || s.style.width === '0' || !s.style.width) {
-                document.querySelectorAll('.slider').forEach(el => el.style.width = '0');
-                s.style.width = targetWidth;
-            } else {
-                s.style.width = '0';
-            }
-        }
-
-        function changeLegs(val) {
-            legCountTarget = Math.max(2, Math.min(10, legCountTarget + val));
-            document.getElementById('leg-quantity').innerText = legCountTarget;
-        }
-
-        function generateAIParlay() {
-            const cards = Array.from(document.querySelectorAll('.game-card-unit'));
-            const available = cards.filter(c =>
-                c.dataset.started === 'false' &&
-                !c.querySelector('.content-blurred')
-            );
-            available.sort((a, b) => parseFloat(b.dataset.edge) - parseFloat(a.dataset.edge));
-            const selection = available.slice(0, legCountTarget);
-
-            if (selection.length === 0) {
-                alert("No available games found that haven't started yet.");
-                return;
-            }
-
-            parlayPicks = selection.map(c => ({
-                id: c.dataset.id,
-                pick: c.dataset.pick,
-                spread: c.dataset.spread
-            }));
-
-            updateParlayUI();
-        }
-
-        function addToParlay(id, pick, spread, event) {
-            event.stopPropagation();
-            if (parlayPicks.find(p => p.id === id)) return;
-            parlayPicks.push({ id, pick, spread });
-            updateParlayUI();
-            const s = document.getElementById('parlay-sidebar');
-            const targetWidth = window.innerWidth < 600 ? '100%' : '380px';
-            s.style.width = targetWidth;
-        }
-
-        function updateParlayUI() {
-            const list = document.getElementById('parlay-list');
-            const summary = document.getElementById('parlay-summary');
-            const emptyMsg = document.getElementById('parlay-empty-msg');
-            const legDisplay = document.getElementById('leg-count');
-
-            if (parlayPicks.length > 0) {
-                emptyMsg.style.display = 'none';
-                summary.style.display = 'block';
-                list.innerHTML = parlayPicks.map((p, i) => `
-                    <div class="stat-card-mini d-flex justify-content-between align-items-center mb-2 mx-0">
-                        <div><div class="fw-bold" style="font-size:0.75rem;">${p.pick}</div><div class="text-warning small">${p.spread}</div></div>
-                        <button class="btn-close" style="font-size:0.5rem;" onclick="removeLeg(${i})"></button>
-                    </div>`).join('');
-            } else {
-                emptyMsg.style.display = 'block'; summary.style.display = 'none'; list.innerHTML = '';
-            }
-            legDisplay.innerText = parlayPicks.length;
-        }
-
-        function removeLeg(i) { parlayPicks.splice(i, 1); updateParlayUI(); }
-        function clearParlay() { parlayPicks = []; updateParlayUI(); }
-
-        async function updateEngine() {
-            try {
-                const response = await fetch('/api/updates');
-                const dataMap = await response.json();
-                for (const id in dataMap) {
-                    const game = dataMap[id];
-                    const scoreStr = `${game.s_away}-${game.s_home}`;
-                    if(document.getElementById(`score-${id}`)) document.getElementById(`score-${id}`).textContent = scoreStr;
-                    if(document.getElementById(`tick-${id}`)) document.getElementById(`tick-${id}`).textContent = scoreStr;
-                    if(document.getElementById(`status-${id}`)) document.getElementById(`status-${id}`).innerText = game.status;
-                    if(document.getElementById(`pbp-text-${id}`)) document.getElementById(`pbp-text-${id}`).textContent = game.last_play;
-
-                    const drawPath = (pathId, points, max) => {
-                        const path = document.getElementById(pathId);
-                        if (!path || !points || !points.length) return;
-                        const d = points.map((val, i) => `${(i / (points.length - 1)) * 100},${100 - ((val / max) * 98)}`).join(' L ');
-                        path.setAttribute('d', `M ${d}`);
-                    };
-                    const mMax = Math.max(...(game.momentum_home || [0]), ...(game.momentum_away || [0]), 20);
-                    drawPath(`flow-away-${id}`, game.momentum_away, mMax);
-                    drawPath(`flow-home-${id}`, game.momentum_home, mMax);
-                }
-                document.getElementById('sync-timer').innerHTML = `<span class="text-success">●</span> SYNCED ${new Date().toLocaleTimeString()}`;
-            } catch (err) { console.error(err); }
-        }
-
-        async function shareCard(gameId, event) {
-            event.stopPropagation();
-            const card = document.querySelector(`#game-card-${gameId} .card-front`);
-            const canvas = await html2canvas(card, { useCORS: true, scale: 2 });
-            const link = document.createElement('a');
-            link.download = `Edge-${gameId}.png`; link.href = canvas.toDataURL(); link.click();
-        }
-
-        setInterval(updateEngine, 30000);
-        window.onload = updateEngine;
-    </script>
+    // Load saved theme
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.body.setAttribute('data-theme', savedTheme);
+    });
+</script>
 </body>
 </html>
