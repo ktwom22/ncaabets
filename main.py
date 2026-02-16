@@ -16,6 +16,8 @@ SPREADSHEET_ID = '1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 
+DEFAULT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png"
+
 
 def get_sheets_service():
     creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -43,14 +45,17 @@ def check_and_archive_game(eid, current_data):
                     "Pick": row[4], "Spread": row[5], "Proj_A": float(row[6]),
                     "Proj_H": float(row[7]), "Edge": float(row[8]) if len(row) > 8 else 0.0
                 }
+
         archive_row = [datetime.now().strftime("%m/%d/%Y"), current_data['matchup'], "LIVE", "TBD",
                        current_data['pick'], current_data['spread'], current_data['proj_a'], current_data['proj_h'],
                        current_data['edge'], str(eid)]
+
         service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range='Archive!A:J',
                                                valueInputOption='USER_ENTERED',
                                                body={'values': [archive_row]}).execute()
         return None
-    except:
+    except Exception as e:
+        print(f"Archive Error: {e}")
         return None
 
 
@@ -80,15 +85,16 @@ def fetch_and_sync():
         temp_games = []
         for _, row in df.iterrows():
             try:
-                away_t, home_t = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
-                if not away_t or away_t == "nan": continue
+                away_t = str(row.get('Away Team', '')).strip()
+                home_t = str(row.get('Home Team', '')).strip()
+                if not away_t or away_t.lower() == "nan": continue
 
                 eid = str(row.get('ESPN ID', '0')).strip()
                 ld = live_map.get(eid, {})
                 comp = ld.get('competitions', [{}])[0]
                 competitors = comp.get('competitors', [])
 
-                # Intel (No Leaders)
+                # Team Intelligence
                 prob_away = 0.0
                 try:
                     prob_away = comp.get('odds', [{}])[0].get('awayWinPercentage', 0.0)
@@ -107,6 +113,7 @@ def fetch_and_sync():
                 is_started = state in ['in', 'post']
                 is_locked = False
 
+                # Stats Cleanup
                 p_a, p_h = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
                 pa_a, pa_h = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
                 l3_p_a, l3_p_h = clean_val(row.get('L3 PPG Away')), clean_val(row.get('L3 PPG Home'))
@@ -124,7 +131,7 @@ def fetch_and_sync():
                 pick, spread_str = (home_t, f"{h_spread:+g}") if our_line < h_spread else (away_t, f"{-h_spread:+g}")
                 edge = round(abs(our_line - h_spread), 1)
 
-                # LOCKING LOGIC: If game started, pull original pick from Archive
+                # Locking: Retrieve snapshot if game is underway
                 if is_started:
                     arch_data = {"matchup": f"{away_t} @ {home_t}", "pick": pick, "spread": spread_str,
                                  "proj_a": round(proj_a, 1), "proj_h": round(proj_h, 1), "edge": edge}
@@ -134,7 +141,7 @@ def fetch_and_sync():
                                                                  history['Proj_H'], history['Edge']
                         is_locked = True
 
-                # Scoreboard
+                # Scoreboard Logic
                 score_display = "Scheduled"
                 if is_started:
                     h_s = next((t.get('score') for t in competitors if t.get('homeAway') == 'home'), "0")
@@ -142,6 +149,10 @@ def fetch_and_sync():
                     score_display = f"{a_s}-{h_s}"
                 else:
                     score_display = ld.get('status', {}).get('type', {}).get('shortDetail', "Scheduled")
+
+                # Logo Safety
+                away_l = str(row.get('Away Logo', '')).strip()
+                home_l = str(row.get('Home Logo', '')).strip()
 
                 temp_games.append({
                     "slug": re.sub(r'[^a-z0-9]+', '-', f"{away_t}-{home_t}-{eid}".lower()),
@@ -153,20 +164,22 @@ def fetch_and_sync():
                     "Pick": pick,
                     "Pick_Spread": spread_str,
                     "Edge": edge,
-                    "L_Logo": str(row.get('Away Logo', '')).strip(),
-                    "R_Logo": str(row.get('Home Logo', '')).strip(),
+                    "L_Logo": away_l if away_l and away_l.lower() != 'nan' else DEFAULT_LOGO,
+                    "R_Logo": home_l if home_l and home_l.lower() != 'nan' else DEFAULT_LOGO,
                     "Left_Proj": round(proj_a, 1),
                     "Right_Proj": round(proj_h, 1),
                     "full_stats": {
                         "away_name": away_t, "home_name": home_t,
                         "ppg_a": p_a, "ppg_h": p_h,
                         "l3_ppg_a": l3_p_a, "l3_ppg_h": l3_p_h,
-                        "rank_a": r_a, "rank_h": r_h,
+                        "ppga_a": pa_a, "ppga_h": pa_h,
+                        "rank_a": int(r_a), "rank_h": int(r_h),
                         "total": clean_val(row.get('FD Total')),
                         "spread": h_spread
                     }
                 })
-            except:
+            except Exception as e:
+                print(f"Row Processing Error: {e}")
                 continue
 
         DATA_STORE = {"games": temp_games, "stats": {"PCT": pct}, "last_updated": datetime.now().strftime("%I:%M %p")}
@@ -176,16 +189,14 @@ def fetch_and_sync():
 
 def refresh_loop():
     while True:
-        fetch_and_sync()
         time.sleep(60)
+        fetch_and_sync()
 
 
-# --- START DATA SYNC IMMEDIATELY ON IMPORT ---
-# This ensures the list isn't empty when the first user visits
+# --- INITIALIZATION ---
 fetch_and_sync()
-
-# Start the background refresh thread
 threading.Thread(target=refresh_loop, daemon=True).start()
+
 
 @app.route('/')
 def index():
@@ -194,11 +205,12 @@ def index():
                            stats=DATA_STORE["stats"],
                            last_updated=DATA_STORE["last_updated"])
 
+
 @app.route('/matchup/<slug>')
 def matchup_detail(slug):
     game = next((g for g in DATA_STORE["games"] if g['slug'] == slug), None)
     return render_template('matchup.html', g=game) if game else ("Not Found", 404)
 
-# Keep this at the very bottom for local testing only
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

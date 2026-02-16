@@ -1,126 +1,114 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edge Engine Pro | Live Analytics</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        /* --- HIGH CONTRAST VARIABLES --- */
-        :root {
-            /* Dark Mode (Default) */
-            --bg: #050708;
-            --card-bg: #111418;
-            --primary: #3b82f6; /* Vibrant Blue */
-            --accent: #fbbf24;  /* Vibrant Gold */
-            --text-main: #ffffff;
-            --text-dim: #a1a1aa;
-            --border: #27272a;
-            --success: #22c55e;
-            --card-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
+{% extends "base.html" %}
 
-        [data-theme="light"] {
-            --bg: #f4f4f5;
-            --card-bg: #ffffff;
-            --primary: #2563eb;
-            --accent: #d97706;
-            --text-main: #09090b;
-            --text-dim: #71717a;
-            --border: #e4e4e7;
-            --success: #16a34a;
-            --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
+{% block title %}Edge Engine Pro | Dashboard{% endblock %}
 
-        body { background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text-main); transition: background 0.3s ease; }
+{% block extra_css %}
+<style>
+    .game-card {
+        background: var(--card-bg);
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        transition: all 0.2s ease;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+    }
+    .game-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: var(--card-shadow); }
 
-        /* Theme Toggle Button */
-        .theme-toggle {
-            cursor: pointer;
-            padding: 8px 16px;
-            border-radius: 50px;
-            border: 1px solid var(--border);
-            background: var(--card-bg);
-            color: var(--text-main);
-            font-weight: 700;
-            font-size: 0.8rem;
-        }
+    /* Fix Header Alignment */
+    .card-top {
+        padding: 12px 20px;
+        background: rgba(128,128,128,0.03);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 
-        /* --- UI COMPONENTS --- */
-        .game-card {
-            background: var(--card-bg);
-            border-radius: 24px;
-            border: 1px solid var(--border);
-            box-shadow: var(--card-shadow);
-            transition: transform 0.2s ease;
-        }
-        .game-card:hover { transform: translateY(-5px); }
+    /* Fixed Height for Team Names to prevent "jumping" */
+    .rec-box { min-height: 60px; display: flex; flex-direction: column; justify-content: center; }
+    .rec-team { font-size: 1.1rem; line-height: 1.2; margin-bottom: 2px; }
 
-        .badge-play { font-weight: 900; font-size: 0.8rem; letter-spacing: 0.5px; border-radius: 8px; padding: 6px 14px; }
-        .bg-play { background: #15803d; color: #f0fdf4; border: 1px solid #22c55e; }
-        .bg-fade { background: #27272a; color: #e4e4e7; border: 1px solid #3f3f46; }
+    /* Scoreboard Grid */
+    .matchup-grid {
+        display: grid;
+        grid-template-columns: 1fr 80px 1fr;
+        align-items: center;
+        gap: 10px;
+        margin: 20px 0;
+    }
 
-        .score-display { font-family: 'Monaco', monospace; font-size: 1.8rem; font-weight: 900; letter-spacing: -1px; }
-        .edge-glow { color: var(--success) !important; font-weight: 900; }
-        .ultra-edge { color: var(--accent) !important; font-weight: 900; text-shadow: 0 0 10px rgba(251, 191, 36, 0.2); }
+    .team-slot { display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .team-logo { width: 48px; height: 48px; object-fit: contain; margin-bottom: 8px; }
 
-        .stat-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; font-weight: 800; letter-spacing: 1px; }
-    </style>
-</head>
-<body>
+    .score-center { font-weight: 900; font-size: 0.9rem; color: var(--text-main); text-transform: uppercase; }
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-5">
+    .proj-val { font-size: 0.85rem; font-weight: 800; }
+    .proj-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+
+    .badge-play { font-weight: 900; font-size: 0.7rem; padding: 4px 12px; border-radius: 6px; }
+    .bg-play { background: #15803d; color: #f0fdf4; }
+    .bg-fade { background: #27272a; color: #e4e4e7; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-end mb-4">
         <div>
             <h1 class="fw-black mb-0" style="letter-spacing: -2px;">EDGE ENGINE <span class="text-primary">PRO</span></h1>
-            <p class="text-dim small mb-0" id="last-update">Syncing Neural Mapping...</p>
+            <p class="text-dim small mb-0">Updated: {{ last_updated }}</p>
         </div>
-        <div class="d-flex align-items-center gap-3">
-            <button class="theme-toggle" onclick="toggleTheme()">🌓 TOGGLE THEME</button>
-            <div class="bg-dark px-4 py-2 rounded-4 border border-secondary text-center" style="background: var(--card-bg) !important;">
-                <div class="stat-label mb-0">Model Accuracy</div>
-                <div class="h4 fw-black text-success mb-0" id="win-pct">{{ stats.PCT }}%</div>
-            </div>
+        <div class="px-4 py-2 rounded-4 border border-secondary text-center" style="background: var(--card-bg);">
+            <div class="stat-label mb-0" style="font-size: 0.6rem;">WIN PCT</div>
+            <div class="h4 fw-black text-success mb-0">{{ stats.PCT }}%</div>
         </div>
     </div>
 
-    <div class="row g-4" id="game-container">
+    <div class="row g-4">
         {% for g in games %}
-        <div class="col-md-4 game-column" data-id="{{ g.ESPN_ID }}">
-            <div class="game-card h-100 p-0" onclick="window.location.href='/matchup/{{ g.slug }}'">
-                <div class="p-3 d-flex justify-content-between align-items-center" style="background: rgba(128,128,128,0.05);">
-                    <span class="badge-play action-badge {{ 'bg-play' if g.Action == 'PLAY' else 'bg-fade' }}">{{ g.Action }}</span>
-                    <span class="status-live" style="color: #ff4757; font-weight: 800; font-size: 0.7rem;">
-                        {% if g.is_locked %}🔒 ARCHIVED{% else %}● LIVE DATA{% endif %}
+        <div class="col-md-6 col-lg-4">
+            <div class="game-card h-100" onclick="window.location.href='/matchup/{{ g.slug }}'">
+
+                <div class="card-top">
+                    <span class="badge-play {{ 'bg-play' if g.Edge >= 3.5 else 'bg-fade' }}">
+                        {{ 'PLAY' if g.Edge >= 3.5 else 'FADE' }}
+                    </span>
+                    <span class="small fw-bold {{ 'text-warning' if g.is_locked else 'text-danger' }}">
+                        {% if g.is_locked %}🔒 LOCKED{% else %}● LIVE{% endif %}
                     </span>
                 </div>
 
-                <div class="p-4 text-center">
-                    <div class="stat-label">AI Recommendation</div>
-                    <h4 class="fw-black mb-4">
-                        <span class="text-main">{{ g.Pick }}</span>
-                        <span class="text-primary">{{ g.Pick_Spread }}</span>
-                    </h4>
+                <div class="p-4">
+                    <div class="rec-box text-center mb-3">
+                        <div class="stat-label" style="font-size: 0.55rem;">SYSTEM RECOMMENDATION</div>
+                        <div class="rec-team fw-black">{{ g.Pick }} <span class="text-primary">{{ g.Pick_Spread }}</span></div>
+                    </div>
 
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <img src="{{ g.Left_Logo }}" style="width: 50px; height: 50px; object-fit: contain;">
-                            <div class="fw-bold mt-2 small text-dim">{{ g.Left_Proj }}</div>
+                    <div class="matchup-grid">
+                        <div class="team-slot">
+                            <img src="{{ g.L_Logo }}" class="team-logo" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
+                            <div class="proj-label">PROJ</div>
+                            <div class="proj-val">{{ g.Left_Proj }}</div>
                         </div>
-                        <div class="score-display">{{ g.Live_Score }}</div>
-                        <div>
-                            <img src="{{ g.Right_Logo }}" style="width: 50px; height: 50px; object-fit: contain;">
-                            <div class="fw-bold mt-2 small text-primary">{{ g.Right_Proj }}</div>
+
+                        <div class="score-center text-center">
+                            {{ g.Live_Score }}
+                        </div>
+
+                        <div class="team-slot">
+                            <img src="{{ g.R_Logo }}" class="team-logo" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
+                            <div class="proj-label">PROJ</div>
+                            <div class="proj-val text-primary">{{ g.Right_Proj }}</div>
                         </div>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-center pt-3 border-top border-secondary" style="border-color: var(--border) !important;">
-                        <div class="text-start">
-                            <span class="stat-label d-block">Market Edge</span>
-                            <span class="edge-val {{ 'ultra-edge' if g.Edge >= 5.0 else 'edge-glow' }}">+{{ g.Edge }}</span>
+                    <div class="d-flex justify-content-between align-items-center pt-3 border-top" style="border-color: var(--border) !important;">
+                        <div>
+                            <span class="stat-label d-block" style="font-size: 0.55rem;">SYSTEM EDGE</span>
+                            <span class="fw-black {{ 'text-warning' if g.Edge >= 5.0 else 'text-success' }}">+{{ g.Edge }}</span>
                         </div>
-                        <button class="btn btn-sm btn-primary rounded-pill px-3 fw-bold" onclick="event.stopPropagation(); openStatsModal({{ g.full_stats | tojson }})">STATS</button>
+                        <div class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" style="font-size: 0.7rem;">ANALYZE</div>
                     </div>
                 </div>
             </div>
@@ -128,22 +116,4 @@
         {% endfor %}
     </div>
 </div>
-
-<script>
-    // Theme Logic
-    function toggleTheme() {
-        const body = document.body;
-        const currentTheme = body.getAttribute('data-theme');
-        const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
-        body.setAttribute('data-theme', nextTheme);
-        localStorage.setItem('theme', nextTheme);
-    }
-
-    // Load saved theme
-    document.addEventListener('DOMContentLoaded', () => {
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        document.body.setAttribute('data-theme', savedTheme);
-    });
-</script>
-</body>
-</html>
+{% endblock %}

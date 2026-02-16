@@ -67,7 +67,6 @@
     .text-home { color: var(--primary); text-align: right; }
     .text-away { color: var(--text-main); text-align: left; }
 
-    .leader-headshot { width: 45px; height: 45px; border-radius: 50%; background: #000; border: 2px solid var(--border); }
     .edge-footer { background: var(--primary); padding: 25px; text-align: center; color: white; }
 {% endblock %}
 
@@ -76,7 +75,8 @@
     <div class="container">
         <div class="row align-items-center g-2">
             <div class="col-4">
-                <img src="{{ g.L_Logo }}" class="header-logo mb-2">
+                {# Logo Fallback #}
+                <img src="{{ g.L_Logo if g.L_Logo and g.L_Logo != 'nan' else 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png' }}" class="header-logo mb-2">
                 <h3 class="fw-black mb-0">{{ g.full_stats.away_name }}</h3>
                 <div class="projection-pill mx-auto" style="max-width: 130px;">
                     <div class="stat-label">SYSTEM PROJ</div>
@@ -86,7 +86,7 @@
 
             <div class="col-4">
                 {% if g.is_locked %}
-                    <div class="locked-tag mb-1" style="color: var(--accent); font-weight: 900; font-size: 0.7rem;">🔒 LOCKED</div>
+                    <div class="locked-tag mb-1" style="color: #ff9f43; font-weight: 900; font-size: 0.7rem;">🔒 LOCKED</div>
                     <div class="display-4 fw-black" style="letter-spacing: -2px;">{{ g.Live_Score }}</div>
                 {% elif g.status_state == 'in' %}
                     <div class="live-tag mb-1" style="color: #ff4757; font-weight: 900; font-size: 0.7rem;">● LIVE</div>
@@ -103,7 +103,8 @@
             </div>
 
             <div class="col-4">
-                <img src="{{ g.R_Logo }}" class="header-logo mb-2">
+                {# Logo Fallback #}
+                <img src="{{ g.R_Logo if g.R_Logo and g.R_Logo != 'nan' else 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png' }}" class="header-logo mb-2">
                 <h3 class="fw-black mb-0 text-primary">{{ g.full_stats.home_name }}</h3>
                 <div class="projection-pill mx-auto border-primary" style="max-width: 130px; background: rgba(59, 130, 246, 0.05);">
                     <div class="stat-label text-primary">SYSTEM PROJ</div>
@@ -161,26 +162,6 @@
         </div>
 
         <div class="col-lg-5 order-2">
-            <h5 class="fw-black mb-3">Season Leaders (PPG)</h5>
-            <div class="analysis-container mb-4">
-                <div class="stat-grid-row py-4">
-                    <div class="grid-val text-away">
-                        <img src="{{ g.intel.away_leader.headshot }}" class="leader-headshot mb-2">
-                        <div class="fw-bold small">{{ g.intel.away_leader.name }}</div>
-                    </div>
-                    <div class="grid-label">Points Average</div>
-                    <div class="grid-val text-home">
-                        <img src="{{ g.intel.home_leader.headshot }}" class="leader-headshot mb-2" style="border-color: var(--primary);">
-                        <div class="fw-bold small text-primary">{{ g.intel.home_leader.name }}</div>
-                    </div>
-                </div>
-                <div class="stat-grid-row" style="border-bottom: none;">
-                    <div class="grid-val text-away h4 fw-black">{{ g.intel.away_leader.val }}</div>
-                    <div class="grid-label">AVG</div>
-                    <div class="grid-val text-home h4 fw-black text-primary">{{ g.intel.home_leader.val }}</div>
-                </div>
-            </div>
-
             <h5 class="fw-black mb-3">System Analytics</h5>
             <div class="analysis-container shadow-lg">
                 <div class="category-divider">Scoring & Momentum</div>
