@@ -180,19 +180,25 @@ def refresh_loop():
         time.sleep(60)
 
 
+# --- START DATA SYNC IMMEDIATELY ON IMPORT ---
+# This ensures the list isn't empty when the first user visits
+fetch_and_sync()
+
+# Start the background refresh thread
+threading.Thread(target=refresh_loop, daemon=True).start()
+
 @app.route('/')
 def index():
-    return render_template('index.html', games=DATA_STORE["games"], stats=DATA_STORE["stats"],
+    return render_template('index.html',
+                           games=DATA_STORE["games"],
+                           stats=DATA_STORE["stats"],
                            last_updated=DATA_STORE["last_updated"])
-
 
 @app.route('/matchup/<slug>')
 def matchup_detail(slug):
     game = next((g for g in DATA_STORE["games"] if g['slug'] == slug), None)
     return render_template('matchup.html', g=game) if game else ("Not Found", 404)
 
-
+# Keep this at the very bottom for local testing only
 if __name__ == '__main__':
-    fetch_and_sync()
-    threading.Thread(target=refresh_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=8080)
