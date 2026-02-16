@@ -4,30 +4,57 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}Edge Engine Pro | Elite Analytics{% endblock %}</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+
     <style>
+        /* --- DYNAMIC THEME ENGINE --- */
         :root {
-            --bg: #050708; --card-bg: #111418; --primary: #3b82f6; --accent: #fbbf24;
-            --text-main: #ffffff; --text-dim: #a1a1aa; --border: #27272a; --success: #22c55e;
+            /* Dark Theme (Default) */
+            --bg: #050708;
+            --card-bg: #111418;
+            --primary: #3b82f6;
+            --accent: #fbbf24;
+            --text-main: #ffffff;
+            --text-dim: #a1a1aa;
+            --success: #22c55e;
+
+            /* HIGH CONTRAST BORDERS */
+            --border-main: #000000;      /* Thick outer borders */
+            --border-sub: #1f2124;       /* Internal dividers */
+            --inner-lift: rgba(255,255,255,0.03);
         }
+
         [data-theme="light"] {
-            --bg: #f4f4f5; --card-bg: #ffffff; --primary: #2563eb; --accent: #d97706;
-            --text-main: #09090b; --text-dim: #71717a; --border: #e4e4e7; --success: #16a34a;
+            /* Light Theme */
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --accent: #d97706;
+            --text-main: #0f172a;
+            --text-dim: #475569;
+            --success: #16a34a;
+
+            /* HIGH CONTRAST BORDERS */
+            --border-main: #0f172a;      /* Dark Charcoal borders */
+            --border-sub: #94a3b8;       /* Slate internal lines */
+            --inner-lift: #f8fafc;
         }
 
         body {
             background: var(--bg);
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
-            transition: background 0.3s ease;
+            transition: background 0.3s ease, color 0.3s ease;
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
         }
 
         /* --- NAVIGATION --- */
         .nav-header {
-            border-bottom: 1px solid var(--border);
+            border-bottom: 2px solid var(--border-main);
             background: var(--card-bg);
             padding: 12px 0;
             position: sticky;
@@ -41,12 +68,9 @@
         /* --- NEURAL SYNC BAR --- */
         #sync-progress {
             position: fixed;
-            top: 0;
-            left: 0;
-            height: 3px;
+            top: 0; left: 0; height: 3px;
             background: var(--primary);
-            width: 0%;
-            z-index: 2000;
+            width: 0%; z-index: 2000;
             transition: width 0.4s ease;
             box-shadow: 0 0 10px var(--primary);
         }
@@ -54,22 +78,32 @@
         /* --- THEME SWITCH --- */
         .theme-switch { position: relative; display: inline-block; width: 40px; height: 20px; }
         .theme-switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #3f3f46; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #3f3f46; transition: .4s; border-radius: 34px;
+            border: 1px solid var(--border-main);
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 12px; width: 12px;
+            left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%;
+        }
         input:checked + .slider { background-color: var(--primary); }
         input:checked + .slider:before { transform: translateX(20px); }
 
-        /* --- MOBILE RESPONSIVENESS --- */
-        @media (max-width: 768px) {
-            .container { padding-left: 15px; padding-right: 15px; }
-            .nav-header h1 { font-size: 1.1rem; }
-            .stat-label { font-size: 0.55rem; }
-            body { padding-bottom: 60px; } /* Space for thumb-scrolling */
+        /* --- SHARED CARD CLASSES (Force Borders) --- */
+        .bordered-card {
+            border: 2px solid var(--border-main) !important;
+            background: var(--card-bg);
+            border-radius: 16px;
         }
 
-        /* Prevent image breaking layout */
-        img { max-width: 100%; height: auto; }
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media (max-width: 768px) {
+            .nav-header h1 { font-size: 1.1rem; }
+            body { padding-bottom: 20px; }
+        }
 
+        /* INJECT INDEX CSS HERE */
         {% block extra_css %}{% endblock %}
     </style>
 </head>
@@ -96,12 +130,12 @@
     </div>
 </nav>
 
-<main>
+<main class="container">
     {% block content %}{% endblock %}
 </main>
 
 <script>
-    // Theme Engine
+    // Theme Engine Logic
     const themeToggle = document.getElementById('theme-toggle');
     const applyTheme = (theme) => {
         document.body.setAttribute('data-theme', theme);
@@ -115,15 +149,15 @@
         });
     }
 
-    // Initialize Theme immediately to prevent flash
+    // Initialize Theme
     const savedTheme = localStorage.getItem('theme') || 'dark';
     applyTheme(savedTheme);
 
-    // Neural Sync Progress Bar Simulation (Matches your 60s refresh)
+    // Sync Bar Simulation
     let progress = 0;
     const progressBar = document.getElementById('sync-progress');
     setInterval(() => {
-        progress += 1.67; // Approx 100/60
+        progress += 1.67;
         if (progress > 100) progress = 0;
         progressBar.style.width = progress + "%";
     }, 1000);

@@ -4,116 +4,155 @@
 
 {% block extra_css %}
 <style>
+    :root {
+        --card-border-heavy: #0f172a;
+        --highlight-bg: rgba(59, 130, 246, 0.08);
+    }
+
+    [data-theme="dark"] {
+        --card-border-heavy: #000000;
+        --highlight-bg: rgba(59, 130, 246, 0.15);
+    }
+
     .game-card {
         background: var(--card-bg);
-        border-radius: 24px;
-        border: 1px solid var(--border);
-        transition: all 0.2s ease;
-        cursor: pointer;
+        border: 2.5px solid var(--card-border-heavy) !important;
+        border-radius: 20px;
+        height: 100%;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
+        transition: transform 0.2s ease;
     }
-    .game-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: var(--card-shadow); }
 
-    /* Fix Header Alignment */
-    .card-top {
-        padding: 12px 20px;
-        background: rgba(128,128,128,0.03);
-        border-bottom: 1px solid var(--border);
+    .card-meta-header {
+        padding: 12px 16px;
+        background: var(--inner-lift);
+        border-bottom: 2.5px solid var(--card-border-heavy);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .card-body-main { padding: 20px 15px; text-align: center; }
+
+    /* --- THE DATA WELL --- */
+    .data-well {
+        margin: 15px 0;
+        display: grid;
+        grid-template-columns: 1fr 40px 1fr;
+        align-items: center;
+        background: var(--inner-lift);
+        border: 2px solid var(--card-border-heavy);
+        border-radius: 16px;
+        overflow: hidden; /* Clips the highlight background */
+    }
+
+    /* Team Side Styling */
+    .team-side {
+        padding: 20px 10px;
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* THE HIGHLIGHT: This triggers if it's the picked team */
+    .is-pick {
+        background: var(--highlight-bg);
+        box-shadow: inset 0 0 15px rgba(59, 130, 246, 0.2);
+    }
+
+    .pick-badge {
+        font-size: 0.5rem;
+        background: var(--primary);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-bottom: 5px;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .v-divider {
+        border-left: 2px solid var(--card-border-heavy);
+        height: 100%;
+        width: 100%;
+    }
+
+    /* Logo Size Increase */
+    .logo-large {
+        width: 52px;
+        height: 52px;
+        object-fit: contain;
+        margin-bottom: 8px;
+        /* Slight drop shadow to make logos pop */
+        filter: drop-shadow(0 4px 4px rgba(0,0,0,0.2));
+    }
+
+    .card-footer-action {
+        margin-top: auto;
+        padding: 15px;
+        background: var(--inner-lift);
+        border-top: 2.5px solid var(--card-border-heavy);
         display: flex;
         justify-content: space-between;
         align-items: center;
     }
 
-    /* Fixed Height for Team Names to prevent "jumping" */
-    .rec-box { min-height: 60px; display: flex; flex-direction: column; justify-content: center; }
-    .rec-team { font-size: 1.1rem; line-height: 1.2; margin-bottom: 2px; }
-
-    /* Scoreboard Grid */
-    .matchup-grid {
-        display: grid;
-        grid-template-columns: 1fr 80px 1fr;
-        align-items: center;
-        gap: 10px;
-        margin: 20px 0;
-    }
-
-    .team-slot { display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .team-logo { width: 48px; height: 48px; object-fit: contain; margin-bottom: 8px; }
-
-    .score-center { font-weight: 900; font-size: 0.9rem; color: var(--text-main); text-transform: uppercase; }
-
-    .proj-val { font-size: 0.85rem; font-weight: 800; }
-    .proj-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
-
-    .badge-play { font-weight: 900; font-size: 0.7rem; padding: 4px 12px; border-radius: 6px; }
-    .bg-play { background: #15803d; color: #f0fdf4; }
-    .bg-fade { background: #27272a; color: #e4e4e7; }
+    .caps-bold { font-size: 0.65rem; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4 mb-5">
-    <div class="d-flex justify-content-between align-items-end mb-4">
-        <div>
-            <h1 class="fw-black mb-0" style="letter-spacing: -2px;">EDGE ENGINE <span class="text-primary">PRO</span></h1>
-            <p class="text-dim small mb-0">Updated: {{ last_updated }}</p>
-        </div>
-        <div class="px-4 py-2 rounded-4 border border-secondary text-center" style="background: var(--card-bg);">
-            <div class="stat-label mb-0" style="font-size: 0.6rem;">WIN PCT</div>
-            <div class="h4 fw-black text-success mb-0">{{ stats.PCT }}%</div>
-        </div>
-    </div>
+<div class="row g-4 mt-2">
+    {% for g in games %}
+    <div class="col-md-6 col-lg-4">
+        <div class="game-card" onclick="window.location.href='/matchup/{{ g.slug }}'">
 
-    <div class="row g-4">
-        {% for g in games %}
-        <div class="col-md-6 col-lg-4">
-            <div class="game-card h-100" onclick="window.location.href='/matchup/{{ g.slug }}'">
+            <div class="card-meta-header">
+                <span class="caps-bold" style="color: var(--primary);">MODEL RATING: {{ g.Edge }}</span>
+                <span class="caps-bold {{ 'text-warning' if g.is_locked else 'text-danger' }}">
+                    {% if g.is_locked %}LOCKED{% else %}● LIVE{% endif %}
+                </span>
+            </div>
 
-                <div class="card-top">
-                    <span class="badge-play {{ 'bg-play' if g.Edge >= 3.5 else 'bg-fade' }}">
-                        {{ 'PLAY' if g.Edge >= 3.5 else 'FADE' }}
-                    </span>
-                    <span class="small fw-bold {{ 'text-warning' if g.is_locked else 'text-danger' }}">
-                        {% if g.is_locked %}🔒 LOCKED{% else %}● LIVE{% endif %}
-                    </span>
+            <div class="card-body-main">
+                <div class="caps-bold opacity-75 mb-1" style="color: var(--text-dim);">SYSTEM RECOMMENDATION</div>
+                <h4 class="fw-black mb-3">{{ g.Pick }} <span class="text-primary">{{ g.Pick_Spread }}</span></h4>
+
+                <div class="data-well">
+                    <div class="team-side {{ 'is-pick' if g.Pick == g.Left_Team }}">
+                        {% if g.Pick == g.Left_Team %}<span class="pick-badge">THE PICK</span>{% endif %}
+                        <img src="{{ g.L_Logo }}" class="logo-large" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
+                        <div class="fw-black">{{ g.Left_Proj }}</div>
+                    </div>
+
+                    <div class="v-divider"></div>
+
+                    <div class="team-side {{ 'is-pick' if g.Pick == g.Right_Team }}">
+                        {% if g.Pick == g.Right_Team %}<span class="pick-badge">THE PICK</span>{% endif %}
+                        <img src="{{ g.R_Logo }}" class="logo-large" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
+                        <div class="fw-black text-primary">{{ g.Right_Proj }}</div>
+                    </div>
                 </div>
 
-                <div class="p-4">
-                    <div class="rec-box text-center mb-3">
-                        <div class="stat-label" style="font-size: 0.55rem;">SYSTEM RECOMMENDATION</div>
-                        <div class="rec-team fw-black">{{ g.Pick }} <span class="text-primary">{{ g.Pick_Spread }}</span></div>
-                    </div>
-
-                    <div class="matchup-grid">
-                        <div class="team-slot">
-                            <img src="{{ g.L_Logo }}" class="team-logo" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
-                            <div class="proj-label">PROJ</div>
-                            <div class="proj-val">{{ g.Left_Proj }}</div>
-                        </div>
-
-                        <div class="score-center text-center">
-                            {{ g.Live_Score }}
-                        </div>
-
-                        <div class="team-slot">
-                            <img src="{{ g.R_Logo }}" class="team-logo" onerror="this.src='https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png'">
-                            <div class="proj-label">PROJ</div>
-                            <div class="proj-val text-primary">{{ g.Right_Proj }}</div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center pt-3 border-top" style="border-color: var(--border) !important;">
-                        <div>
-                            <span class="stat-label d-block" style="font-size: 0.55rem;">SYSTEM EDGE</span>
-                            <span class="fw-black {{ 'text-warning' if g.Edge >= 5.0 else 'text-success' }}">+{{ g.Edge }}</span>
-                        </div>
-                        <div class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" style="font-size: 0.7rem;">ANALYZE</div>
-                    </div>
+                <div class="badge bg-dark border border-secondary px-4 py-2" style="font-family: monospace;">
+                    LIVE: {{ g.Live_Score }}
                 </div>
             </div>
+
+            <div class="card-footer-action">
+                <div>
+                    <span class="caps-bold d-block" style="font-size: 0.55rem; color: var(--text-dim);">VALUE ADVANTAGE</span>
+                    <span class="fw-black text-success h5 mb-0">+{{ g.Edge }}%</span>
+                </div>
+                <div class="btn btn-sm btn-dark rounded-pill px-4 fw-black" style="font-size: 0.7rem; border: 2px solid var(--card-border-heavy);">
+                    VIEW INTEL
+                </div>
+            </div>
+
         </div>
-        {% endfor %}
     </div>
+    {% endfor %}
 </div>
 {% endblock %}
