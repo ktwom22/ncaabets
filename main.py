@@ -1,189 +1,190 @@
-import os, io, requests, json, threading, time, math, re
+import os, io, requests, json, threading, time, math, re, queue
 import pandas as pd
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template
 from datetime import datetime
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
 
-# --- CONFIGURATION ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1766494058&single=true&output=csv"
-ARCHIVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTh9hxThF-cxBppDUYAPp0TMH3ckTHBIUqKcD2EhtBaVmbXx5SRiid9gJnVA1xQkQ9FPpiRMI9fhqDJ/pub?gid=1827029141&single=true&output=csv"
-ESPN_API = "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=100"
+# --- CONFIG ---
+session = requests.Session()
+session.headers.update({'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
 
 SPREADSHEET_ID = '1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM'
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid=1766494058"
+ARCHIVE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid=1827029141"
+ESPN_API = "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=100"
+
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 DEFAULT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png"
 
+archive_queue = queue.Queue()
+EXISTING_ARCHIVE_IDS = set()
+
+# Global cache to keep picks locked once a game starts
+LOCKED_PICKS_CACHE = {}
+
 
 def get_sheets_service():
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-    return build('sheets', 'v4', credentials=creds)
+    try:
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE,
+                                                      scopes=['https://www.googleapis.com/auth/spreadsheets'])
+        return build('sheets', 'v4', credentials=creds, cache_discovery=False)
+    except Exception as e:
+        print(f"❌ API AUTH ERROR: {e}")
+        return None
+
+
+def archive_worker():
+    global EXISTING_ARCHIVE_IDS
+    while True:
+        d = archive_queue.get()
+        if d is None: break
+        try:
+            eid_str = str(d['eid']).strip()
+            if eid_str in EXISTING_ARCHIVE_IDS:
+                archive_queue.task_done()
+                continue
+            service = get_sheets_service()
+            if not service:
+                archive_queue.task_done()
+                continue
+
+            row = [
+                datetime.now().strftime("%m/%d/%Y"), f"{d['away_t']} @ {d['home_t']}", "LIVE", "TBD",
+                d['pick'], d['spread_str'], d['proj_a'], d['proj_h'], d['edge'],
+                d['p_a'], d['pa_a'], d['p_h'], d['pa_h'], d['rank_a'], d['rank_h'],
+                eid_str, d['sos_a'], d['sos_h'], d['l3_p_a'], d['l3_p_h'],
+                d['l3_pa_a'], d['l3_pa_h'], d['game_time']
+            ]
+            service.spreadsheets().values().append(
+                spreadsheetId=SPREADSHEET_ID, range='Archive!A1',
+                valueInputOption='USER_ENTERED', body={'values': [row]}
+            ).execute()
+            EXISTING_ARCHIVE_IDS.add(eid_str)
+            print(f"✅ ARCHIVED: {d['away_t']} vs {d['home_t']}")
+        except Exception as e:
+            print(f"❌ WORKER ERROR: {e}")
+        finally:
+            archive_queue.task_done()
+
+
+threading.Thread(target=archive_worker, daemon=True).start()
 
 
 def clean_val(val):
-    if pd.isna(val) or str(val).strip().lower() == "nan" or str(val).strip() == "": return 0.0
+    if pd.isna(val) or str(val).strip().lower() in ["nan", ""]: return 0.0
     try:
-        cleaned = "".join(c for c in str(val) if c.isdigit() or c in '.-')
-        return float(cleaned) if cleaned else 0.0
+        return float(re.sub(r'[^0-9.-]', '', str(val)))
     except:
         return 0.0
 
 
-def check_and_archive_game(eid, current_data):
-    """Logs the game to the Archive to 'Lock' the pick values permanently."""
-    try:
-        service = get_sheets_service()
-        result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Archive!A:Z').execute()
-        rows = result.get('values', [])
-
-        # Look for existing ESPN ID in Column P (Index 15)
-        for row in rows:
-            if len(row) >= 16 and str(row[15]) == str(eid):
-                return {
-                    "Pick": row[4], "Spread": row[5], "Proj_A": float(row[6]),
-                    "Proj_H": float(row[7]), "Edge": float(row[8]) if len(row) > 8 else 0.0
-                }
-
-        # Match your exact provided column sequence: Date, Matchup, Result, Score, Pick, Spread, ProjA, ProjH, Edge, Stats...
-        archive_row = [
-            datetime.now().strftime("%m/%d/%Y"), current_data['matchup'], "LIVE", "TBD",
-            current_data['pick'], current_data['spread'], current_data['proj_a'], current_data['proj_h'],
-            current_data['edge'],
-            current_data['stats']['p_a'], current_data['stats']['pa_a'],
-            current_data['stats']['p_h'], current_data['stats']['pa_h'],
-            current_data['stats']['r_a'], current_data['stats']['r_h'],
-            str(eid),
-            current_data['stats'].get('sos_a', 0), current_data['stats'].get('sos_h', 0),
-            current_data['stats']['l3_p_a'], current_data['stats']['l3_pa_h'],
-            current_data['stats'].get('l2_pa_a', 0), current_data['stats'].get('l3_pa_h', 0)
-        ]
-
-        service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range='Archive!A:V',
-                                               valueInputOption='USER_ENTERED',
-                                               body={'values': [archive_row]}).execute()
-        return None
-    except Exception as e:
-        print(f"Archive Error: {e}")
-        return None
-
-
-DATA_STORE = {"games": [], "stats": {"PCT": 0.0}, "last_updated": "Initializing..."}
-session = requests.Session()
+DATA_STORE = {"games": [], "last_updated": "Initializing..."}
 
 
 def fetch_and_sync():
-    global DATA_STORE
+    global DATA_STORE, EXISTING_ARCHIVE_IDS, LOCKED_PICKS_CACHE
     try:
-        espn_res = session.get(ESPN_API, timeout=10).json()
-        live_map = {str(e['id']): e for e in espn_res.get('events', [])}
-        df = pd.read_csv(io.StringIO(session.get(SHEET_URL).text))
+        e_res = session.get(ESPN_API, timeout=5).json()
+        events = e_res.get('events', [])
 
-        try:
-            adf = pd.read_csv(io.StringIO(session.get(ARCHIVE_CSV_URL).text))
-            adf['Result'] = adf['Result'].astype(str).str.strip().upper()
-            wins = (adf['Result'] == 'WIN').sum()
-            losses = (adf['Result'] == 'LOSS').sum()
-            pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
-        except:
-            pct = 0.0
+        r_main = session.get(f"{SHEET_URL}&t={int(time.time())}", timeout=10)
+        df = pd.read_csv(io.StringIO(r_main.text))
+        df.columns = [str(c).strip() for c in df.columns]
 
+        sheet_data = df.to_dict('records')
         temp_games = []
-        for _, row in df.iterrows():
-            try:
-                away_t, home_t = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
-                if not away_t or away_t.lower() == "nan": continue
 
-                eid = str(row.get('ESPN ID', '0')).strip()
-                ld = live_map.get(eid, {})
-                comp = ld.get('competitions', [{}])[0]
+        for ev in events:
+            eid = str(ev['id'])
+            status_obj = ev.get('status', {})
+            state = status_obj.get('type', {}).get('state', 'pre')  # 'pre', 'in', or 'post'
+            score_detail = status_obj.get('type', {}).get('shortDetail', "Scheduled")
 
-                # Probs & Intel
-                prob_away = 0.0
-                try:
-                    prob_away = comp.get('odds', [{}])[0].get('awayWinPercentage', 0.0)
-                except:
-                    pass
+            comp = ev.get('competitions', [{}])[0]
+            teams = comp.get('competitors', [])
+            home_espn = next((t['team']['displayName'] for t in teams if t['homeAway'] == 'home'), "").strip()
+            away_espn = next((t['team']['displayName'] for t in teams if t['homeAway'] == 'away'), "").strip()
 
-                intel = {
-                    "broadcast": comp.get('broadcasts', [{}])[0].get('names', ['ESPN+'])[0],
-                    "venue": comp.get('venue', {}).get('fullName', 'TBD Venue'),
-                    "prob_away": prob_away, "prob_home": round(100 - prob_away, 1) if prob_away > 0 else 0
+            # Smart Matching Logic
+            row = None
+            for s_row in sheet_data:
+                s_home = str(s_row.get('Home Team', '')).strip()
+                if home_espn.lower() in s_home.lower() or s_home.lower() in home_espn.lower():
+                    row = s_row
+                    break
+
+            if not row: continue
+
+            # Basic Stats
+            d = {
+                'eid': eid, 'away_t': away_espn, 'home_t': home_espn,
+                'sos_a': clean_val(row.get('SOS Away')), 'sos_h': clean_val(row.get('SOS Home')),
+                'l3_pa_a': clean_val(row.get('L3 PPGA Away')), 'l3_pa_h': clean_val(row.get('L3 PPGA Home')),
+                'p_a': clean_val(row.get('PPG Away')), 'pa_a': clean_val(row.get('PPGA Away')),
+                'p_h': clean_val(row.get('PPG Home')), 'pa_h': clean_val(row.get('PPGA Home')),
+                'l3_p_a': clean_val(row.get('L3 PPG Away')), 'l3_p_h': clean_val(row.get('L3 PPG Home')),
+                'rank_a': clean_val(row.get('Rank Away')), 'rank_h': clean_val(row.get('Rank Home')),
+                'spread_val': clean_val(row.get('FD Spread')), 'game_time': str(row.get('Game Time', 'TBD')),
+                'logo_a': next((t['team']['logo'] for t in teams if t['homeAway'] == 'away'), DEFAULT_LOGO),
+                'logo_h': next((t['team']['logo'] for t in teams if t['homeAway'] == 'home'), DEFAULT_LOGO)
+            }
+
+            # Check if we should use a LOCKED pick or calculate a new one
+            is_locked = (state != 'pre')
+
+            if is_locked and eid in LOCKED_PICKS_CACHE:
+                # Use the pick we saved when the game started
+                pick_data = LOCKED_PICKS_CACHE[eid]
+            else:
+                # Calculate Fresh Projections
+                proj_a = (math.sqrt(max(0.1, d['p_a'] + d['l3_p_a'])) * math.sqrt(
+                    max(0.1, d['pa_h'] + d['l3_pa_h'])) / 2) + ((d['rank_h'] - d['rank_a']) * 0.05)
+                proj_h = (math.sqrt(max(0.1, d['p_h'] + d['l3_p_h'])) * math.sqrt(
+                    max(0.1, d['pa_a'] + d['l3_pa_a'])) / 2) - ((d['rank_h'] - d['rank_a']) * 0.05)
+
+                pick, spread_str = (d['home_t'], f"{d['spread_val']:+g}") if (proj_a - proj_h) < d['spread_val'] else (
+                d['away_t'], f"{-d['spread_val']:+g}")
+                edge = round(abs((proj_a - proj_h) - d['spread_val']), 1)
+
+                pick_data = {
+                    'pick': pick, 'spread_str': spread_str, 'edge': edge,
+                    'proj_a': round(proj_a, 1), 'proj_h': round(proj_h, 1)
                 }
 
-                # Stats & Model Math
-                p_a, p_h = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
-                pa_a, pa_h = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
-                l3_p_a, l3_p_h = clean_val(row.get('L3 PPG Away')), clean_val(row.get('L3 PPG Home'))
-                l3_pa_a, l3_pa_h = clean_val(row.get('L3 PPGA Away')), clean_val(row.get('L3 PPGA Home'))
-                r_a, r_h = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
-                h_spread = clean_val(row.get('FD Spread'))
+                # If the game just started, save this pick to the cache permanently for this session
+                if is_locked:
+                    LOCKED_PICKS_CACHE[eid] = pick_data
 
-                proj_a = ((math.sqrt(max(0.1, p_a + l3_p_a)) * math.sqrt(max(0.1, pa_h + l3_pa_h))) / 2) + (
-                            (r_h - r_a) * 0.05)
-                proj_h = ((math.sqrt(max(0.1, p_h + l3_p_h)) * math.sqrt(max(0.1, pa_a + l3_pa_a))) / 2) - (
-                            (r_h - r_a) * 0.05)
+            # Final Score / Archiving Logic
+            if is_locked:
+                scs = {t.get('homeAway'): t.get('score', '0') for t in teams}
+                score_display = f"{scs.get('away', '0')}-{scs.get('home', '0')}"
+                if eid not in EXISTING_ARCHIVE_IDS:
+                    d.update(pick_data)
+                    archive_queue.put(d)
+            else:
+                score_display = score_detail
 
-                pick, spread_str = (home_t, f"{h_spread:+g}") if (proj_a - proj_h) < h_spread else (
-                away_t, f"{-h_spread:+g}")
-                edge = round(abs((proj_a - proj_h) - h_spread), 1)
+            temp_games.append({
+                "slug": f"game-{eid}", "Live_Score": score_display, "is_locked": is_locked,
+                "Pick": pick_data['pick'], "Pick_Spread": pick_data['spread_str'], "Edge": pick_data['edge'],
+                "L_Logo": d['logo_a'], "R_Logo": d['logo_h'],
+                "Left_Proj": pick_data['proj_a'], "Right_Proj": pick_data['proj_h'],
+                "Left_Team": d['away_t'], "Right_Team": d['home_t'], "full_stats": d
+            })
 
-                # Locking Logic
-                state = ld.get('status', {}).get('type', {}).get('state')
-                is_started = state in ['in', 'post']
-                is_locked = False
-
-                if is_started:
-                    arch_data = {
-                        "matchup": f"{away_t} @ {home_t}", "pick": pick, "spread": spread_str,
-                        "proj_a": round(proj_a, 1), "proj_h": round(proj_h, 1), "edge": edge,
-                        "stats": {"p_a": p_a, "pa_a": pa_a, "p_h": p_h, "pa_h": pa_h, "r_a": r_a, "r_h": r_h,
-                                  "l3_p_a": l3_p_a, "l3_pa_h": l3_pa_h}
-                    }
-                    history = check_and_archive_game(eid, arch_data)
-                    if history:
-                        pick, spread_str, proj_a, proj_h, edge = history['Pick'], history['Spread'], history['Proj_A'], \
-                                                                 history['Proj_H'], history['Edge']
-                        is_locked = True
-
-                # Score Logic
-                score_display = "Scheduled"
-                if is_started:
-                    h_s = next((t.get('score') for t in comp.get('competitors', []) if t.get('homeAway') == 'home'),
-                               "0")
-                    a_s = next((t.get('score') for t in comp.get('competitors', []) if t.get('homeAway') == 'away'),
-                               "0")
-                    score_display = f"{a_s}-{h_s}"
-                else:
-                    score_display = ld.get('status', {}).get('type', {}).get('shortDetail', "Scheduled")
-
-                temp_games.append({
-                    "slug": re.sub(r'[^a-z0-9]+', '-', f"{away_t}-{home_t}-{eid}".lower()),
-                    "is_locked": is_locked, "ESPN_ID": eid, "intel": intel, "Live_Score": score_display,
-                    "status_state": state, "Pick": pick, "Pick_Spread": spread_str, "Edge": edge,
-                    "L_Logo": str(row.get('Away Logo', '')).strip() or DEFAULT_LOGO,
-                    "R_Logo": str(row.get('Home Logo', '')).strip() or DEFAULT_LOGO,
-                    "Left_Proj": round(proj_a, 1), "Right_Proj": round(proj_h, 1),
-                    "Left_Team": away_t, "Right_Team": home_t,
-                    "full_stats": {
-                        "away_name": away_t, "home_name": home_t, "ppg_a": p_a, "ppg_h": p_h,
-                        "l3_ppg_a": l3_p_a, "l3_ppg_h": l3_p_h, "ppga_a": pa_a, "ppga_h": pa_h,
-                        "rank_a": int(r_a), "rank_h": int(r_h), "total": clean_val(row.get('FD Total')),
-                        "spread": h_spread
-                    }
-                })
-            except Exception as e:
-                continue
-        DATA_STORE = {"games": temp_games, "stats": {"PCT": pct}, "last_updated": datetime.now().strftime("%I:%M %p")}
+        DATA_STORE = {"games": temp_games, "last_updated": datetime.now().strftime("%I:%M %p")}
+        print(f"--- SYNCED {len(temp_games)} GAMES (ESPN LOCKING ACTIVE) ---")
     except Exception as e:
-        print(f"Global Fetch Error: {e}")
+        print(f"❌ SYNC ERROR: {e}")
 
 
 def refresh_loop():
     while True:
-        time.sleep(60)
+        time.sleep(30)
         fetch_and_sync()
 
 
@@ -193,14 +194,7 @@ threading.Thread(target=refresh_loop, daemon=True).start()
 
 @app.route('/')
 def index():
-    return render_template('index.html', games=DATA_STORE["games"], stats=DATA_STORE["stats"],
-                           last_updated=DATA_STORE["last_updated"])
-
-
-@app.route('/matchup/<slug>')
-def matchup_detail(slug):
-    game = next((g for g in DATA_STORE["games"] if g['slug'] == slug), None)
-    return render_template('matchup.html', g=game) if game else ("Not Found", 404)
+    return render_template('index.html', games=DATA_STORE["games"], last_updated=DATA_STORE["last_updated"])
 
 
 if __name__ == '__main__':
