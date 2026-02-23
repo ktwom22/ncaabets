@@ -15,7 +15,6 @@ ESPN_API = "http://site.api.espn.com/apis/site/v2/sports/basketball/mens-college
 SPREADSHEET_ID = '1RIxl64YbDn7st6h0g9LZFdL8r_NgAwYgs-KW3Kni7wM'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'credentials.json'
-
 DEFAULT_LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/default.png"
 
 
@@ -34,23 +33,35 @@ def clean_val(val):
 
 
 def check_and_archive_game(eid, current_data):
-    """Checks if a game is in the Archive; if not, logs it to lock the pick."""
+    """Logs the game to the Archive to 'Lock' the pick values permanently."""
     try:
         service = get_sheets_service()
-        result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Archive!A:J').execute()
+        result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Archive!A:Z').execute()
         rows = result.get('values', [])
+
+        # Look for existing ESPN ID in Column P (Index 15)
         for row in rows:
-            if len(row) >= 10 and str(row[9]) == str(eid):
+            if len(row) >= 16 and str(row[15]) == str(eid):
                 return {
                     "Pick": row[4], "Spread": row[5], "Proj_A": float(row[6]),
                     "Proj_H": float(row[7]), "Edge": float(row[8]) if len(row) > 8 else 0.0
                 }
 
-        archive_row = [datetime.now().strftime("%m/%d/%Y"), current_data['matchup'], "LIVE", "TBD",
-                       current_data['pick'], current_data['spread'], current_data['proj_a'], current_data['proj_h'],
-                       current_data['edge'], str(eid)]
+        # Match your exact provided column sequence: Date, Matchup, Result, Score, Pick, Spread, ProjA, ProjH, Edge, Stats...
+        archive_row = [
+            datetime.now().strftime("%m/%d/%Y"), current_data['matchup'], "LIVE", "TBD",
+            current_data['pick'], current_data['spread'], current_data['proj_a'], current_data['proj_h'],
+            current_data['edge'],
+            current_data['stats']['p_a'], current_data['stats']['pa_a'],
+            current_data['stats']['p_h'], current_data['stats']['pa_h'],
+            current_data['stats']['r_a'], current_data['stats']['r_h'],
+            str(eid),
+            current_data['stats'].get('sos_a', 0), current_data['stats'].get('sos_h', 0),
+            current_data['stats']['l3_p_a'], current_data['stats']['l3_pa_h'],
+            current_data['stats'].get('l2_pa_a', 0), current_data['stats'].get('l3_pa_h', 0)
+        ]
 
-        service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range='Archive!A:J',
+        service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range='Archive!A:V',
                                                valueInputOption='USER_ENTERED',
                                                body={'values': [archive_row]}).execute()
         return None
@@ -66,18 +77,15 @@ session = requests.Session()
 def fetch_and_sync():
     global DATA_STORE
     try:
-        # 1. Fetch ESPN Data
         espn_res = session.get(ESPN_API, timeout=10).json()
         live_map = {str(e['id']): e for e in espn_res.get('events', [])}
-
-        # 2. Fetch Google Sheet (Live Odds)
         df = pd.read_csv(io.StringIO(session.get(SHEET_URL).text))
 
-        # 3. Fetch Win % from Archive CSV
         try:
             adf = pd.read_csv(io.StringIO(session.get(ARCHIVE_CSV_URL).text))
-            wins = (adf['Result'].str.upper() == 'WIN').sum()
-            losses = (adf['Result'].str.upper() == 'LOSS').sum()
+            adf['Result'] = adf['Result'].astype(str).str.strip().upper()
+            wins = (adf['Result'] == 'WIN').sum()
+            losses = (adf['Result'] == 'LOSS').sum()
             pct = round((wins / (wins + losses)) * 100, 1) if (wins + losses) > 0 else 0.0
         except:
             pct = 0.0
@@ -85,16 +93,14 @@ def fetch_and_sync():
         temp_games = []
         for _, row in df.iterrows():
             try:
-                away_t = str(row.get('Away Team', '')).strip()
-                home_t = str(row.get('Home Team', '')).strip()
+                away_t, home_t = str(row.get('Away Team', '')).strip(), str(row.get('Home Team', '')).strip()
                 if not away_t or away_t.lower() == "nan": continue
 
                 eid = str(row.get('ESPN ID', '0')).strip()
                 ld = live_map.get(eid, {})
                 comp = ld.get('competitions', [{}])[0]
-                competitors = comp.get('competitors', [])
 
-                # Team Intelligence
+                # Probs & Intel
                 prob_away = 0.0
                 try:
                     prob_away = comp.get('odds', [{}])[0].get('awayWinPercentage', 0.0)
@@ -104,16 +110,10 @@ def fetch_and_sync():
                 intel = {
                     "broadcast": comp.get('broadcasts', [{}])[0].get('names', ['ESPN+'])[0],
                     "venue": comp.get('venue', {}).get('fullName', 'TBD Venue'),
-                    "prob_away": prob_away,
-                    "prob_home": round(100 - prob_away, 1) if prob_away > 0 else 0
+                    "prob_away": prob_away, "prob_home": round(100 - prob_away, 1) if prob_away > 0 else 0
                 }
 
-                # Status and Locking
-                state = ld.get('status', {}).get('type', {}).get('state')
-                is_started = state in ['in', 'post']
-                is_locked = False
-
-                # Stats Cleanup
+                # Stats & Model Math
                 p_a, p_h = clean_val(row.get('PPG Away')), clean_val(row.get('PPG Home'))
                 pa_a, pa_h = clean_val(row.get('PPGA Away')), clean_val(row.get('PPGA Home'))
                 l3_p_a, l3_p_h = clean_val(row.get('L3 PPG Away')), clean_val(row.get('L3 PPG Home'))
@@ -121,67 +121,61 @@ def fetch_and_sync():
                 r_a, r_h = clean_val(row.get('Rank Away')), clean_val(row.get('Rank Home'))
                 h_spread = clean_val(row.get('FD Spread'))
 
-                # AI Model Math
                 proj_a = ((math.sqrt(max(0.1, p_a + l3_p_a)) * math.sqrt(max(0.1, pa_h + l3_pa_h))) / 2) + (
                             (r_h - r_a) * 0.05)
                 proj_h = ((math.sqrt(max(0.1, p_h + l3_p_h)) * math.sqrt(max(0.1, pa_a + l3_pa_a))) / 2) - (
                             (r_h - r_a) * 0.05)
-                our_line = proj_a - proj_h
 
-                pick, spread_str = (home_t, f"{h_spread:+g}") if our_line < h_spread else (away_t, f"{-h_spread:+g}")
-                edge = round(abs(our_line - h_spread), 1)
+                pick, spread_str = (home_t, f"{h_spread:+g}") if (proj_a - proj_h) < h_spread else (
+                away_t, f"{-h_spread:+g}")
+                edge = round(abs((proj_a - proj_h) - h_spread), 1)
 
-                # Locking: Retrieve snapshot if game is underway
+                # Locking Logic
+                state = ld.get('status', {}).get('type', {}).get('state')
+                is_started = state in ['in', 'post']
+                is_locked = False
+
                 if is_started:
-                    arch_data = {"matchup": f"{away_t} @ {home_t}", "pick": pick, "spread": spread_str,
-                                 "proj_a": round(proj_a, 1), "proj_h": round(proj_h, 1), "edge": edge}
+                    arch_data = {
+                        "matchup": f"{away_t} @ {home_t}", "pick": pick, "spread": spread_str,
+                        "proj_a": round(proj_a, 1), "proj_h": round(proj_h, 1), "edge": edge,
+                        "stats": {"p_a": p_a, "pa_a": pa_a, "p_h": p_h, "pa_h": pa_h, "r_a": r_a, "r_h": r_h,
+                                  "l3_p_a": l3_p_a, "l3_pa_h": l3_pa_h}
+                    }
                     history = check_and_archive_game(eid, arch_data)
                     if history:
                         pick, spread_str, proj_a, proj_h, edge = history['Pick'], history['Spread'], history['Proj_A'], \
                                                                  history['Proj_H'], history['Edge']
                         is_locked = True
 
-                # Scoreboard Logic
+                # Score Logic
                 score_display = "Scheduled"
                 if is_started:
-                    h_s = next((t.get('score') for t in competitors if t.get('homeAway') == 'home'), "0")
-                    a_s = next((t.get('score') for t in competitors if t.get('homeAway') == 'away'), "0")
+                    h_s = next((t.get('score') for t in comp.get('competitors', []) if t.get('homeAway') == 'home'),
+                               "0")
+                    a_s = next((t.get('score') for t in comp.get('competitors', []) if t.get('homeAway') == 'away'),
+                               "0")
                     score_display = f"{a_s}-{h_s}"
                 else:
                     score_display = ld.get('status', {}).get('type', {}).get('shortDetail', "Scheduled")
 
-                # Logo Safety
-                away_l = str(row.get('Away Logo', '')).strip()
-                home_l = str(row.get('Home Logo', '')).strip()
-
                 temp_games.append({
                     "slug": re.sub(r'[^a-z0-9]+', '-', f"{away_t}-{home_t}-{eid}".lower()),
-                    "is_locked": is_locked,
-                    "ESPN_ID": eid,
-                    "intel": intel,
-                    "Live_Score": score_display,
-                    "status_state": state,
-                    "Pick": pick,
-                    "Pick_Spread": spread_str,
-                    "Edge": edge,
-                    "L_Logo": away_l if away_l and away_l.lower() != 'nan' else DEFAULT_LOGO,
-                    "R_Logo": home_l if home_l and home_l.lower() != 'nan' else DEFAULT_LOGO,
-                    "Left_Proj": round(proj_a, 1),
-                    "Right_Proj": round(proj_h, 1),
+                    "is_locked": is_locked, "ESPN_ID": eid, "intel": intel, "Live_Score": score_display,
+                    "status_state": state, "Pick": pick, "Pick_Spread": spread_str, "Edge": edge,
+                    "L_Logo": str(row.get('Away Logo', '')).strip() or DEFAULT_LOGO,
+                    "R_Logo": str(row.get('Home Logo', '')).strip() or DEFAULT_LOGO,
+                    "Left_Proj": round(proj_a, 1), "Right_Proj": round(proj_h, 1),
+                    "Left_Team": away_t, "Right_Team": home_t,
                     "full_stats": {
-                        "away_name": away_t, "home_name": home_t,
-                        "ppg_a": p_a, "ppg_h": p_h,
-                        "l3_ppg_a": l3_p_a, "l3_ppg_h": l3_p_h,
-                        "ppga_a": pa_a, "ppga_h": pa_h,
-                        "rank_a": int(r_a), "rank_h": int(r_h),
-                        "total": clean_val(row.get('FD Total')),
+                        "away_name": away_t, "home_name": home_t, "ppg_a": p_a, "ppg_h": p_h,
+                        "l3_ppg_a": l3_p_a, "l3_ppg_h": l3_p_h, "ppga_a": pa_a, "ppga_h": pa_h,
+                        "rank_a": int(r_a), "rank_h": int(r_h), "total": clean_val(row.get('FD Total')),
                         "spread": h_spread
                     }
                 })
             except Exception as e:
-                print(f"Row Processing Error: {e}")
                 continue
-
         DATA_STORE = {"games": temp_games, "stats": {"PCT": pct}, "last_updated": datetime.now().strftime("%I:%M %p")}
     except Exception as e:
         print(f"Global Fetch Error: {e}")
@@ -193,16 +187,13 @@ def refresh_loop():
         fetch_and_sync()
 
 
-# --- INITIALIZATION ---
 fetch_and_sync()
 threading.Thread(target=refresh_loop, daemon=True).start()
 
 
 @app.route('/')
 def index():
-    return render_template('index.html',
-                           games=DATA_STORE["games"],
-                           stats=DATA_STORE["stats"],
+    return render_template('index.html', games=DATA_STORE["games"], stats=DATA_STORE["stats"],
                            last_updated=DATA_STORE["last_updated"])
 
 
